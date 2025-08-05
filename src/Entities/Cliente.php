@@ -37,6 +37,9 @@ Abstract class Cliente {
         $this->id = $id;
     }
     public function setEmail(string $email): void {
+        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            throw new \InvalidArgumentException('Email inválido: ' . $email);
+        }
         $this->email = $email;
     }
     public function setTelefono(string $telefono): void {
