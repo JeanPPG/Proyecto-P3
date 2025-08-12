@@ -1,5 +1,4 @@
 <?php
-
 declare(strict_types=1);
 
 namespace App\Repositories;
@@ -8,49 +7,79 @@ use App\Interfaces\RepositoryInterface;
 use App\Config\Database;
 use App\Entities\Venta;
 use PDO;
+use PDOException;
 
 class VentaRepository implements RepositoryInterface
 {
     private PDO $db;
-    private PersonaNaturalRepository $personaNaturalRepository;
-    private PersonaJuridicaRepository $personaJuridicaRepository;
 
     public function __construct()
     {
         $this->db = Database::getConnection();
-        $this->personaNaturalRepository = new PersonaNaturalRepository();
-        $this->personaJuridicaRepository = new PersonaJuridicaRepository();
     }
 
     private function hydrate(array $row): Venta
     {
-        // Determinar tipo de cliente
-        $cliente = null;
-        if (!empty($row['id_persona_natural'])) {
-            $cliente = $this->personaNaturalRepository->findById((int)$row['id_persona_natural']);
-        } elseif (!empty($row['id_persona_juridica'])) {
-            $cliente = $this->personaJuridicaRepository->findById((int)$row['id_persona_juridica']);
-        }
+        $fecha = isset($row['fecha']) ? new \DateTime((string)$row['fecha']) : new \DateTime();
 
         return new Venta(
-            (int)$row['id_venta'],
-            $cliente,
-            $row['fecha_venta'],
-            (float)$row['total']
+            (int)$row['id'],
+            $fecha,
+            (int)$row['idCliente'],
+            isset($row['total']) ? (float)$row['total'] : 0.0,
+            isset($row['estado']) ? (string)$row['estado'] : 'BORRADOR'
         );
     }
 
     public function findAll(): array
     {
-        $stmt = $this->db->query('CALL sp_venta_list();');
-        $rows = $stmt->fetchAll();
-        $stmt->closeCursor();
+        try {
+            $stmt = $this->db->query('CALL sp_venta_list()');
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            $stmt->closeCursor();
 
-        $ventas = [];
-        foreach ($rows as $r) {
-            $ventas[] = $this->hydrate($r);
+            $items = [];
+            foreach ($rows as $r) {
+                $items[] = $this->hydrate($r);
+            }
+            return $items;
+        } catch (PDOException $e) {
+            throw new \RuntimeException('Error al listar ventas: '.$e->getMessage(), 0, $e);
         }
-        return $ventas;
+    }
+
+    public function findById(int $id): ?object
+    {
+        try {
+            $stmt = $this->db->prepare('CALL sp_find_venta(?)');
+            $stmt->execute([$id]);
+
+            $header = $stmt->fetch(PDO::FETCH_ASSOC);
+            if (!$header) {
+                while ($stmt->nextRowset()) { }
+                $stmt->closeCursor();
+                return null;
+            }
+            $venta = $this->hydrate($header);
+
+           
+            if ($stmt->nextRowset()) {
+                $stmt->fetchAll(PDO::FETCH_ASSOC);
+            }
+            while ($stmt->nextRowset()) {  }
+
+            $stmt->closeCursor();
+            return $venta;
+        } catch (PDOException $e) {
+            if (stripos($e->getMessage(), 'sp_find_venta') !== false) {
+                $stmt = $this->db->prepare('CALL sp_venta_find_by_id(?)');
+                $stmt->execute([$id]);
+                $row = $stmt->fetch(PDO::FETCH_ASSOC);
+                $stmt->closeCursor();
+                return $row ? $this->hydrate($row) : null;
+            }
+            throw new \RuntimeException('Error al buscar venta: '.$e->getMessage(), 0, $e);
+        }
     }
 
     public function create(object $entity): bool
@@ -58,19 +87,15 @@ class VentaRepository implements RepositoryInterface
         if (!$entity instanceof Venta) {
             throw new \InvalidArgumentException('Expected instance of Venta');
         }
-
-        $stmt = $this->db->prepare('CALL sp_create_venta(:id_cliente, :fecha_venta, :total);');
-        $ok = $stmt->execute([
-            ':id_cliente' => $entity->getCliente()->getId(),
-            ':fecha_venta' => $entity->getFechaVenta(),
-            ':total' => $entity->getTotal()
-        ]);
-
-        if (!$ok) {
-            $ok->fetchAll();
+        try {
+            $stmt = $this->db->prepare('CALL sp_create_venta(?)');
+            $ok = $stmt->execute([$entity->getIdCliente()]);
+            // $row = $stmt->fetch(PDO::FETCH_ASSOC); $newId = $row['venta_id'] ?? null;
+            $stmt->closeCursor();
+            return (bool)$ok;
+        } catch (PDOException $e) {
+            throw new \RuntimeException('Error al crear venta: '.$e->getMessage(), 0, $e);
         }
-        $stmt->closeCursor();
-        return $ok;
     }
 
     public function update(object $entity): bool
@@ -78,41 +103,58 @@ class VentaRepository implements RepositoryInterface
         if (!$entity instanceof Venta) {
             throw new \InvalidArgumentException('Expected instance of Venta');
         }
-
-        $stmt = $this->db->prepare('CALL sp_update_venta(:id_venta, :id_cliente, :fecha_venta, :total);');
-        $ok = $stmt->execute([
-            ':id_venta' => $entity->getId(),
-            ':id_cliente' => $entity->getCliente()->getId(),
-            ':fecha_venta' => $entity->getFechaVenta(),
-            ':total' => $entity->getTotal()
-        ]);
-
-        if (!$ok) {
-            $ok->fetchAll();
+        try {
+            $stmt = $this->db->prepare('CALL sp_venta_update_header(?,?,?)');
+            $ok = $stmt->execute([
+                $entity->getId(),
+                $entity->getIdCliente(),
+                $entity->getEstado()
+            ]);
+            $stmt->fetchAll(PDO::FETCH_ASSOC);
+            $stmt->closeCursor();
+            return (bool)$ok;
+        } catch (PDOException $e) {
+            throw new \RuntimeException('Error al actualizar venta: '.$e->getMessage(), 0, $e);
         }
-        $stmt->closeCursor();
-        return $ok;
     }
 
     public function delete(int $id): bool
     {
-        $stmt = $this->db->prepare('CALL sp_delete_venta(:id_venta);');
-        $ok = $stmt->execute([':id_venta' => $id]);
-
-        if (!$ok) {
-            $ok->fetchAll();
+        try {
+            $stmt = $this->db->prepare('CALL sp_delete_venta(?)');
+            $ok = $stmt->execute([$id]);
+            $stmt->closeCursor();
+            return (bool)$ok;
+        } catch (PDOException $e) {
+            throw new \RuntimeException('Error al eliminar venta: '.$e->getMessage(), 0, $e);
         }
-        $stmt->closeCursor();
-        return $ok;
     }
 
-    public function findById(int $id): ?object
-    {
-        $stmt = $this->db->prepare('CALL sp_venta_find_by_id(:id_venta);');
-        $stmt->execute([':id_venta' => $id]);
-        $row = $stmt->fetch();
-        $stmt->closeCursor();
 
-        return $row ? $this->hydrate($row) : null;
+    public function addDetalle(int $idVenta, int $idProducto, int $cantidad, ?float $precioUnitario = null): bool
+    {
+        try {
+            $stmt = $this->db->prepare('CALL sp_venta_add_detalle(?,?,?,?)');
+            $ok = $stmt->execute([$idVenta, $idProducto, $cantidad, $precioUnitario]);
+            do { $stmt->fetchAll(PDO::FETCH_ASSOC); } while ($stmt->nextRowset());
+            $stmt->closeCursor();
+            return (bool)$ok;
+        } catch (PDOException $e) {
+            throw new \RuntimeException('Error al agregar detalle: '.$e->getMessage(), 0, $e);
+        }
+    }
+
+    public function recalcTotal(int $idVenta): bool
+    {
+        try {
+            $stmt = $this->db->prepare('CALL sp_venta_recalcular_total(?)');
+            $ok = $stmt->execute([$idVenta]);
+            $stmt->fetchAll(PDO::FETCH_ASSOC);
+            $stmt->closeCursor();
+            return (bool)$ok;
+        } catch (PDOException $e) {
+            throw new \RuntimeException('Error al recalcular total: '.$e->getMessage(), 0, $e);
+        }
     }
 }
+

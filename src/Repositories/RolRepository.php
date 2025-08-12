@@ -1,5 +1,4 @@
 <?php
-
 declare(strict_types=1);
 
 namespace App\Repositories;
@@ -8,6 +7,7 @@ use App\Interfaces\RepositoryInterface;
 use App\Config\Database;
 use App\Entities\Rol;
 use PDO;
+use PDOException;
 
 class RolRepository implements RepositoryInterface
 {
@@ -21,23 +21,47 @@ class RolRepository implements RepositoryInterface
     private function hydrate(array $row): Rol
     {
         return new Rol(
-            (int)$row['id_rol'],
-            $row['nombre'],
-            $row['descripcion']
+            (int)$row['id'],
+            (string)$row['nombre']
         );
     }
 
     public function findAll(): array
     {
-        $stmt = $this->db->query('CALL sp_rol_list();');
-        $rows = $stmt->fetchAll();
-        $stmt->closeCursor();
+        try {
+            $stmt = $this->db->query('CALL sp_rol_list()');
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            $stmt->closeCursor();
 
-        $roles = [];
-        foreach ($rows as $r) {
-            $roles[] = $this->hydrate($r);
+            $items = [];
+            foreach ($rows as $r) {
+                $items[] = $this->hydrate($r);
+            }
+            return $items;
+        } catch (PDOException $e) {
+            throw new \RuntimeException('Error al listar roles: '.$e->getMessage(), 0, $e);
         }
-        return $roles;
+    }
+
+    public function findById(int $id): ?object
+    {
+        try {
+            $stmt = $this->db->prepare('CALL sp_find_rol(?)');
+            $stmt->execute([$id]);
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            $stmt->closeCursor();
+
+            if (!$row) {
+                $stmt = $this->db->prepare('CALL sp_rol_find_by_id(?)');
+                $stmt->execute([$id]);
+                $row = $stmt->fetch(PDO::FETCH_ASSOC);
+                $stmt->closeCursor();
+            }
+
+            return $row ? $this->hydrate($row) : null;
+        } catch (PDOException $e) {
+            throw new \RuntimeException('Error al buscar rol: '.$e->getMessage(), 0, $e);
+        }
     }
 
     public function create(object $entity): bool
@@ -46,17 +70,14 @@ class RolRepository implements RepositoryInterface
             throw new \InvalidArgumentException('Expected instance of Rol');
         }
 
-        $stmt = $this->db->prepare('CALL sp_create_rol(:nombre, :descripcion);');
-        $ok = $stmt->execute([
-            ':nombre' => $entity->getNombre(),
-            ':descripcion' => $entity->getDescripcion()
-        ]);
-
-        if (!$ok) {
-            $ok->fetchAll();
+        try {
+            $stmt = $this->db->prepare('CALL sp_create_rol(?)');
+            $ok = $stmt->execute([$entity->getNombre()]);
+            $stmt->closeCursor();
+            return (bool)$ok;
+        } catch (PDOException $e) {
+            throw new \RuntimeException('Error al crear rol: '.$e->getMessage(), 0, $e);
         }
-        $stmt->closeCursor();
-        return $ok;
     }
 
     public function update(object $entity): bool
@@ -65,39 +86,26 @@ class RolRepository implements RepositoryInterface
             throw new \InvalidArgumentException('Expected instance of Rol');
         }
 
-        $stmt = $this->db->prepare('CALL sp_update_rol(:id_rol, :nombre, :descripcion);');
-        $ok = $stmt->execute([
-            ':id_rol' => $entity->getId(),
-            ':nombre' => $entity->getNombre(),
-            ':descripcion' => $entity->getDescripcion()
-        ]);
-
-        if (!$ok) {
-            $ok->fetchAll();
+        try {
+            $stmt = $this->db->prepare('CALL sp_update_rol(?, ?)');
+            $ok = $stmt->execute([$entity->getId(), $entity->getNombre()]);
+            $stmt->fetchAll(PDO::FETCH_ASSOC);
+            $stmt->closeCursor();
+            return (bool)$ok;
+        } catch (PDOException $e) {
+            throw new \RuntimeException('Error al actualizar rol: '.$e->getMessage(), 0, $e);
         }
-        $stmt->closeCursor();
-        return $ok;
     }
 
     public function delete(int $id): bool
     {
-        $stmt = $this->db->prepare('CALL sp_delete_rol(:id_rol);');
-        $ok = $stmt->execute([':id_rol' => $id]);
-
-        if (!$ok) {
-            $ok->fetchAll();
+        try {
+            $stmt = $this->db->prepare('CALL sp_delete_rol(?)');
+            $ok = $stmt->execute([$id]);
+            $stmt->closeCursor();
+            return (bool)$ok;
+        } catch (PDOException $e) {
+            throw new \RuntimeException('Error al eliminar rol: '.$e->getMessage(), 0, $e);
         }
-        $stmt->closeCursor();
-        return $ok;
-    }
-
-    public function findById(int $id): ?object
-    {
-        $stmt = $this->db->prepare('CALL sp_rol_find_by_id(:id_rol);');
-        $stmt->execute([':id_rol' => $id]);
-        $row = $stmt->fetch();
-        $stmt->closeCursor();
-
-        return $row ? $this->hydrate($row) : null;
     }
 }

@@ -1,5 +1,4 @@
 <?php
-
 declare(strict_types=1);
 
 namespace App\Repositories;
@@ -8,45 +7,69 @@ use App\Interfaces\RepositoryInterface;
 use App\Config\Database;
 use App\Entities\ProductoFisico;
 use PDO;
+use PDOException;
 
 class ProductoFisicoRepository implements RepositoryInterface
 {
     private PDO $db;
-    private ProductoRepository $productoRepository;
 
     public function __construct()
     {
         $this->db = Database::getConnection();
-        $this->productoRepository = new ProductoRepository();
     }
 
     private function hydrate(array $row): ProductoFisico
     {
-        $productoBase = $this->productoRepository->findById((int)$row['id_producto']);
-
         return new ProductoFisico(
-            $productoBase->getId(),
-            $productoBase->getNombre(),
-            $productoBase->getDescripcion(),
-            $productoBase->getPrecio(),
-            $productoBase->getStock(),
-            $productoBase->getCategoria(),
-            $row['peso'],
-            $row['dimensiones']
+            (int)$row['id'],
+            (string)$row['nombre'],
+            isset($row['descripcion']) ? (string)$row['descripcion'] : null,
+            (float)$row['precioUnitario'],
+            (int)$row['stock'],
+            (int)$row['idCategoria'],
+            isset($row['peso']) ? (float)$row['peso'] : null,
+            isset($row['alto']) ? (float)$row['alto'] : null,
+            isset($row['ancho']) ? (float)$row['ancho'] : null,
+            isset($row['profundidad']) ? (float)$row['profundidad'] : null
         );
     }
 
     public function findAll(): array
     {
-        $stmt = $this->db->query('CALL sp_producto_fisico_list();');
-        $rows = $stmt->fetchAll();
-        $stmt->closeCursor();
+        try {
+            $stmt = $this->db->query('CALL sp_producto_fisico_list()');
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            $stmt->closeCursor();
 
-        $productos = [];
-        foreach ($rows as $r) {
-            $productos[] = $this->hydrate($r);
+            $items = [];
+            foreach ($rows as $r) {
+                $items[] = $this->hydrate($r);
+            }
+            return $items;
+        } catch (PDOException $e) {
+            throw new \RuntimeException('Error al listar productos físicos: '.$e->getMessage(), 0, $e);
         }
-        return $productos;
+    }
+
+    public function findById(int $id): ?object
+    {
+        try {
+            $stmt = $this->db->prepare('CALL sp_find_producto_fisico(?)');
+            $stmt->execute([$id]);
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            $stmt->closeCursor();
+
+            return $row ? $this->hydrate($row) : null;
+        } catch (PDOException $e) {
+            if (stripos($e->getMessage(), 'sp_find_producto_fisico') !== false) {
+                $stmt = $this->db->prepare('CALL sp_producto_fisico_find_by_id(?)');
+                $stmt->execute([$id]);
+                $row = $stmt->fetch(PDO::FETCH_ASSOC);
+                $stmt->closeCursor();
+                return $row ? $this->hydrate($row) : null;
+            }
+            throw new \RuntimeException('Error al buscar producto físico: '.$e->getMessage(), 0, $e);
+        }
     }
 
     public function create(object $entity): bool
@@ -55,18 +78,24 @@ class ProductoFisicoRepository implements RepositoryInterface
             throw new \InvalidArgumentException('Expected instance of ProductoFisico');
         }
 
-        $stmt = $this->db->prepare('CALL sp_create_producto_fisico(:id_producto, :peso, :dimensiones);');
-        $ok = $stmt->execute([
-            ':id_producto' => $entity->getId(),
-            ':peso' => $entity->getPeso(),
-            ':dimensiones' => $entity->getDimensiones()
-        ]);
-
-        if (!$ok) {
-            $ok->fetchAll();
+        try {
+            $stmt = $this->db->prepare('CALL sp_create_producto_fisico(?,?,?,?,?,?,?,?,?)');
+            $ok = $stmt->execute([
+                $entity->getNombre(),
+                $entity->getDescripcion(),
+                $entity->getPrecioUnitario(),
+                $entity->getStock(),
+                $entity->getIdCategoria(),
+                $entity->getPeso(),
+                $entity->getAlto(),
+                $entity->getAncho(),
+                $entity->getProfundidad()
+            ]);
+            $stmt->closeCursor();
+            return $ok;
+        } catch (PDOException $e) {
+            throw new \RuntimeException('Error al crear producto físico: '.$e->getMessage(), 0, $e);
         }
-        $stmt->closeCursor();
-        return $ok;
     }
 
     public function update(object $entity): bool
@@ -75,39 +104,36 @@ class ProductoFisicoRepository implements RepositoryInterface
             throw new \InvalidArgumentException('Expected instance of ProductoFisico');
         }
 
-        $stmt = $this->db->prepare('CALL sp_update_producto_fisico(:id_producto, :peso, :dimensiones);');
-        $ok = $stmt->execute([
-            ':id_producto' => $entity->getId(),
-            ':peso' => $entity->getPeso(),
-            ':dimensiones' => $entity->getDimensiones()
-        ]);
-
-        if (!$ok) {
-            $ok->fetchAll();
+        try {
+            $stmt = $this->db->prepare('CALL sp_update_producto_fisico(?,?,?,?,?,?,?,?,?,?)');
+            $ok = $stmt->execute([
+                $entity->getId(),
+                $entity->getNombre(),
+                $entity->getDescripcion(),
+                $entity->getPrecioUnitario(),
+                $entity->getStock(),
+                $entity->getIdCategoria(),
+                $entity->getPeso(),
+                $entity->getAlto(),
+                $entity->getAncho(),
+                $entity->getProfundidad()
+            ]);
+            $stmt->closeCursor();
+            return $ok;
+        } catch (PDOException $e) {
+            throw new \RuntimeException('Error al actualizar producto físico: '.$e->getMessage(), 0, $e);
         }
-        $stmt->closeCursor();
-        return $ok;
     }
 
     public function delete(int $id): bool
     {
-        $stmt = $this->db->prepare('CALL sp_delete_producto_fisico(:id_producto);');
-        $ok = $stmt->execute([':id_producto' => $id]);
-
-        if (!$ok) {
-            $ok->fetchAll();
+        try {
+            $stmt = $this->db->prepare('CALL sp_delete_producto_fisico(?)');
+            $ok = $stmt->execute([$id]);
+            $stmt->closeCursor();
+            return $ok;
+        } catch (PDOException $e) {
+            throw new \RuntimeException('Error al eliminar producto físico: '.$e->getMessage(), 0, $e);
         }
-        $stmt->closeCursor();
-        return $ok;
-    }
-
-    public function findById(int $id): ?object
-    {
-        $stmt = $this->db->prepare('CALL sp_producto_fisico_find_by_id(:id_producto);');
-        $stmt->execute([':id_producto' => $id]);
-        $row = $stmt->fetch();
-        $stmt->closeCursor();
-
-        return $row ? $this->hydrate($row) : null;
     }
 }

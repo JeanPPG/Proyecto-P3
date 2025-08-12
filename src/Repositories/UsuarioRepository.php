@@ -1,5 +1,4 @@
 <?php
-
 declare(strict_types=1);
 
 namespace App\Repositories;
@@ -8,50 +7,81 @@ use App\Interfaces\RepositoryInterface;
 use App\Config\Database;
 use App\Entities\Usuario;
 use PDO;
+use PDOException;
 
 class UsuarioRepository implements RepositoryInterface
 {
     private PDO $db;
-    private RolRepository $rolRepository;
 
     public function __construct()
     {
         $this->db = Database::getConnection();
-        $this->rolRepository = new RolRepository();
     }
 
     private function hydrate(array $row): Usuario
     {
-        $rol = $this->rolRepository->findById((int)$row['id_rol']);
-
-        $usuario = new Usuario(
-            (int)$row['id_usuario'],
-            $row['nombre_usuario'],
-            $row['email'],
-            'temporal', // contraseña temporal para no romper la lógica
-            $rol
+        return new Usuario(
+            (int)$row['id'],
+            (string)$row['username'],
+            (string)($row['passwordHash'] ?? ''), 
+            (string)$row['estado']
         );
-
-        // Reemplazar hash sin regenerar
-        $ref = new \ReflectionClass($usuario);
-        $property = $ref->getProperty('password');
-        $property->setAccessible(true);
-        $property->setValue($usuario, $row['password']);
-
-        return $usuario;
     }
 
     public function findAll(): array
     {
-        $stmt = $this->db->query('CALL sp_usuario_list();');
-        $rows = $stmt->fetchAll();
-        $stmt->closeCursor();
+        try {
+            $stmt = $this->db->query('CALL sp_usuario_list()');
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            $stmt->closeCursor();
 
-        $usuarios = [];
-        foreach ($rows as $r) {
-            $usuarios[] = $this->hydrate($r);
+            $out = [];
+            foreach ($rows as $r) {
+                $out[] = new Usuario(
+                    (int)$r['id'],
+                    (string)$r['username'],
+                    '',                          
+                    (string)$r['estado']
+                );
+            }
+            return $out;
+        } catch (PDOException $e) {
+            throw new \RuntimeException('Error al listar usuarios: '.$e->getMessage(), 0, $e);
         }
-        return $usuarios;
+    }
+
+    public function findById(int $id): ?object
+    {
+        try {
+            $stmt = $this->db->prepare('CALL sp_find_usuario(?)');
+            $stmt->execute([$id]);
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            $stmt->closeCursor();
+
+            if (!$row) return null;
+
+            $username = (string)$row['username'];
+            $estado   = (string)$row['estado'];
+            $hash     = isset($row['passwordHash']) ? (string)$row['passwordHash'] : '';
+
+            return new Usuario($id, $username, $hash, $estado);
+        } catch (PDOException $e) {
+            if (stripos($e->getMessage(), 'sp_find_usuario') !== false) {
+                $stmt = $this->db->prepare('CALL sp_usuario_find_by_id(?)');
+                $stmt->execute([$id]);
+                $row = $stmt->fetch(PDO::FETCH_ASSOC);
+                $stmt->closeCursor();
+                return $row
+                    ? new Usuario(
+                        (int)$row['id'],
+                        (string)$row['username'],
+                        isset($row['passwordHash']) ? (string)$row['passwordHash'] : '',
+                        (string)$row['estado']
+                      )
+                    : null;
+            }
+            throw new \RuntimeException('Error al buscar usuario: '.$e->getMessage(), 0, $e);
+        }
     }
 
     public function create(object $entity): bool
@@ -60,19 +90,18 @@ class UsuarioRepository implements RepositoryInterface
             throw new \InvalidArgumentException('Expected instance of Usuario');
         }
 
-        $stmt = $this->db->prepare('CALL sp_create_usuario(:nombre_usuario, :email, :password, :id_rol);');
-        $ok = $stmt->execute([
-            ':nombre_usuario' => $entity->getNombreUsuario(),
-            ':email' => $entity->getEmail(),
-            ':password' => $entity->getPassword(),
-            ':id_rol' => $entity->getRol()->getId()
-        ]);
-
-        if (!$ok) {
-            $ok->fetchAll();
+        try {
+            $stmt = $this->db->prepare('CALL sp_create_usuario(?, ?, ?)');
+            $ok = $stmt->execute([
+                $entity->getUsername(),
+                $entity->getPasswordHash(),
+                $entity->getEstado()
+            ]);
+            $stmt->closeCursor();
+            return (bool)$ok;
+        } catch (PDOException $e) {
+            throw new \RuntimeException('Error al crear usuario: '.$e->getMessage(), 0, $e);
         }
-        $stmt->closeCursor();
-        return $ok;
     }
 
     public function update(object $entity): bool
@@ -81,41 +110,97 @@ class UsuarioRepository implements RepositoryInterface
             throw new \InvalidArgumentException('Expected instance of Usuario');
         }
 
-        $stmt = $this->db->prepare('CALL sp_update_usuario(:id_usuario, :nombre_usuario, :email, :password, :id_rol);');
-        $ok = $stmt->execute([
-            ':id_usuario' => $entity->getId(),
-            ':nombre_usuario' => $entity->getNombreUsuario(),
-            ':email' => $entity->getEmail(),
-            ':password' => $entity->getPassword(),
-            ':id_rol' => $entity->getRol()->getId()
-        ]);
-
-        if (!$ok) {
-            $ok->fetchAll();
+        try {
+            $stmt = $this->db->prepare('CALL sp_update_usuario(?, ?, ?)');
+            $ok = $stmt->execute([
+                $entity->getId(),
+                $entity->getUsername(),
+                $entity->getEstado()
+            ]);
+            $stmt->fetchAll(PDO::FETCH_ASSOC);
+            $stmt->closeCursor();
+            return (bool)$ok;
+        } catch (PDOException $e) {
+            throw new \RuntimeException('Error al actualizar usuario: '.$e->getMessage(), 0, $e);
         }
-        $stmt->closeCursor();
-        return $ok;
     }
 
     public function delete(int $id): bool
     {
-        $stmt = $this->db->prepare('CALL sp_delete_usuario(:id_usuario);');
-        $ok = $stmt->execute([':id_usuario' => $id]);
-
-        if (!$ok) {
-            $ok->fetchAll();
+        try {
+            $stmt = $this->db->prepare('CALL sp_usuario_set_estado(?, ?)');
+            $ok = $stmt->execute([$id, 'INACTIVO']);
+            $stmt->fetchAll(PDO::FETCH_ASSOC);
+            $stmt->closeCursor();
+            return (bool)$ok;
+        } catch (PDOException $e) {
+            throw new \RuntimeException('Error al desactivar usuario: '.$e->getMessage(), 0, $e);
         }
-        $stmt->closeCursor();
-        return $ok;
     }
 
-    public function findById(int $id): ?object
+    public function setPassword(int $id, string $passwordHash): bool
     {
-        $stmt = $this->db->prepare('CALL sp_usuario_find_by_id(:id_usuario);');
-        $stmt->execute([':id_usuario' => $id]);
-        $row = $stmt->fetch();
-        $stmt->closeCursor();
+        try {
+            $stmt = $this->db->prepare('CALL sp_usuario_set_password(?, ?)');
+            $ok = $stmt->execute([$id, $passwordHash]);
+            $stmt->fetchAll(PDO::FETCH_ASSOC);
+            $stmt->closeCursor();
+            return (bool)$ok;
+        } catch (PDOException $e) {
+            throw new \RuntimeException('Error al cambiar contraseña: '.$e->getMessage(), 0, $e);
+        }
+    }
 
-        return $row ? $this->hydrate($row) : null;
+    public function setEstado(int $id, string $estado): bool
+    {
+        try {
+            $stmt = $this->db->prepare('CALL sp_usuario_set_estado(?, ?)');
+            $ok = $stmt->execute([$id, $estado]);
+            $stmt->fetchAll(PDO::FETCH_ASSOC);
+            $stmt->closeCursor();
+            return (bool)$ok;
+        } catch (PDOException $e) {
+            throw new \RuntimeException('Error al cambiar estado: '.$e->getMessage(), 0, $e);
+        }
+    }
+
+
+    public function assignRole(int $usuarioId, int $rolId): bool
+    {
+        try {
+            $stmt = $this->db->prepare('CALL sp_usuario_assign_role(?, ?)');
+            $ok = $stmt->execute([$usuarioId, $rolId]);
+            $stmt->fetchAll(PDO::FETCH_ASSOC);
+            $stmt->closeCursor();
+            return (bool)$ok;
+        } catch (PDOException $e) {
+            throw new \RuntimeException('Error al asignar rol: '.$e->getMessage(), 0, $e);
+        }
+    }
+
+    public function removeRole(int $usuarioId, int $rolId): bool
+    {
+        try {
+            $stmt = $this->db->prepare('CALL sp_usuario_remove_role(?, ?)');
+            $ok = $stmt->execute([$usuarioId, $rolId]);
+            $stmt->fetchAll(PDO::FETCH_ASSOC);
+            $stmt->closeCursor();
+            return (bool)$ok;
+        } catch (PDOException $e) {
+            throw new \RuntimeException('Error al quitar rol: '.$e->getMessage(), 0, $e);
+        }
+    }
+
+    public function rolesOf(int $usuarioId): array
+    {
+        try {
+            $stmt = $this->db->prepare('CALL sp_usuario_roles(?)');
+            $stmt->execute([$usuarioId]);
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            $stmt->closeCursor();
+            return $rows;
+        } catch (PDOException $e) {
+            throw new \RuntimeException('Error al listar roles del usuario: '.$e->getMessage(), 0, $e);
+        }
     }
 }

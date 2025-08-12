@@ -1,5 +1,4 @@
 <?php
-
 declare(strict_types=1);
 
 namespace App\Repositories;
@@ -8,45 +7,67 @@ use App\Interfaces\RepositoryInterface;
 use App\Config\Database;
 use App\Entities\ProductoDigital;
 use PDO;
+use PDOException;
 
 class ProductoDigitalRepository implements RepositoryInterface
 {
     private PDO $db;
-    private ProductoRepository $productoRepository;
 
     public function __construct()
     {
         $this->db = Database::getConnection();
-        $this->productoRepository = new ProductoRepository();
     }
 
     private function hydrate(array $row): ProductoDigital
     {
-        $productoBase = $this->productoRepository->findById((int)$row['id_producto']);
-
         return new ProductoDigital(
-            $productoBase->getId(),
-            $productoBase->getNombre(),
-            $productoBase->getDescripcion(),
-            $productoBase->getPrecio(),
-            $productoBase->getStock(),
-            $productoBase->getCategoria(),
-            $row['formato'],
-            $row['url_descarga']
+            (int)$row['id'],
+            (string)$row['nombre'],
+            $row['descripcion'] ?? null,
+            (float)$row['precioUnitario'],
+            (int)$row['stock'],
+            (int)$row['idCategoria'],
+            (string)$row['urlDescarga'],
+            $row['licencia'] ?? null
         );
     }
 
     public function findAll(): array
     {
-        $stmt = $this->db->query('CALL sp_producto_digital_list();');
-        $rows = $stmt->fetchAll();
-        $stmt->closeCursor();
+        try {
+            $stmt = $this->db->query('CALL sp_producto_digital_list()');
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            $stmt->closeCursor();
 
-        $productos = [];
-        foreach ($rows as $r) {
-            $productos[] = $this->hydrate($r);
+            $items = [];
+            foreach ($rows as $r) {
+                $items[] = $this->hydrate($r);
+            }
+            return $items;
+        } catch (PDOException $e) {
+            throw new \RuntimeException('Error al listar productos digitales: '.$e->getMessage(), 0, $e);
         }
-        return $productos;
+    }
+
+    public function findById(int $id): ?object
+    {
+        try {
+            $stmt = $this->db->prepare('CALL sp_find_producto_digital(?)');
+            $stmt->execute([$id]);
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            $stmt->closeCursor();
+
+            return $row ? $this->hydrate($row) : null;
+        } catch (PDOException $e) {
+            if (stripos($e->getMessage(), 'sp_find_producto_digital') !== false) {
+                $stmt = $this->db->prepare('CALL sp_producto_digital_find_by_id(?)');
+                $stmt->execute([$id]);
+                $row = $stmt->fetch(PDO::FETCH_ASSOC);
+                $stmt->closeCursor();
+                return $row ? $this->hydrate($row) : null;
+            }
+            throw new \RuntimeException('Error al buscar producto digital: '.$e->getMessage(), 0, $e);
+        }
     }
 
     public function create(object $entity): bool
@@ -55,18 +76,22 @@ class ProductoDigitalRepository implements RepositoryInterface
             throw new \InvalidArgumentException('Expected instance of ProductoDigital');
         }
 
-        $stmt = $this->db->prepare('CALL sp_create_producto_digital(:id_producto, :formato, :url_descarga);');
-        $ok = $stmt->execute([
-            ':id_producto' => $entity->getId(),
-            ':formato' => $entity->getFormato(),
-            ':url_descarga' => $entity->getUrlDescarga()
-        ]);
-
-        if (!$ok) {
-            $ok->fetchAll();
+        try {
+            $stmt = $this->db->prepare('CALL sp_create_producto_digital(?,?,?,?,?,?,?)');
+            $ok = $stmt->execute([
+                $entity->getNombre(),
+                $entity->getDescripcion(),
+                $entity->getPrecioUnitario(),
+                $entity->getStock(),
+                $entity->getIdCategoria(),
+                $entity->getUrlDescarga(),
+                $entity->getLicencia()
+            ]);
+            $stmt->closeCursor();
+            return $ok;
+        } catch (PDOException $e) {
+            throw new \RuntimeException('Error al crear producto digital: '.$e->getMessage(), 0, $e);
         }
-        $stmt->closeCursor();
-        return $ok;
     }
 
     public function update(object $entity): bool
@@ -75,39 +100,34 @@ class ProductoDigitalRepository implements RepositoryInterface
             throw new \InvalidArgumentException('Expected instance of ProductoDigital');
         }
 
-        $stmt = $this->db->prepare('CALL sp_update_producto_digital(:id_producto, :formato, :url_descarga);');
-        $ok = $stmt->execute([
-            ':id_producto' => $entity->getId(),
-            ':formato' => $entity->getFormato(),
-            ':url_descarga' => $entity->getUrlDescarga()
-        ]);
-
-        if (!$ok) {
-            $ok->fetchAll();
+        try {
+            $stmt = $this->db->prepare('CALL sp_update_producto_digital(?,?,?,?,?,?,?,?)');
+            $ok = $stmt->execute([
+                $entity->getId(),
+                $entity->getNombre(),
+                $entity->getDescripcion(),
+                $entity->getPrecioUnitario(),
+                $entity->getStock(),
+                $entity->getIdCategoria(),
+                $entity->getUrlDescarga(),
+                $entity->getLicencia()
+            ]);
+            $stmt->closeCursor();
+            return $ok;
+        } catch (PDOException $e) {
+            throw new \RuntimeException('Error al actualizar producto digital: '.$e->getMessage(), 0, $e);
         }
-        $stmt->closeCursor();
-        return $ok;
     }
 
     public function delete(int $id): bool
     {
-        $stmt = $this->db->prepare('CALL sp_delete_producto_digital(:id_producto);');
-        $ok = $stmt->execute([':id_producto' => $id]);
-
-        if (!$ok) {
-            $ok->fetchAll();
+        try {
+            $stmt = $this->db->prepare('CALL sp_delete_producto_digital(?)');
+            $ok = $stmt->execute([$id]);
+            $stmt->closeCursor();
+            return $ok;
+        } catch (PDOException $e) {
+            throw new \RuntimeException('Error al eliminar producto digital: '.$e->getMessage(), 0, $e);
         }
-        $stmt->closeCursor();
-        return $ok;
-    }
-
-    public function findById(int $id): ?object
-    {
-        $stmt = $this->db->prepare('CALL sp_producto_digital_find_by_id(:id_producto);');
-        $stmt->execute([':id_producto' => $id]);
-        $row = $stmt->fetch();
-        $stmt->closeCursor();
-
-        return $row ? $this->hydrate($row) : null;
     }
 }

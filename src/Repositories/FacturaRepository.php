@@ -1,5 +1,4 @@
 <?php
-
 declare(strict_types=1);
 
 namespace App\Repositories;
@@ -8,41 +7,69 @@ use App\Interfaces\RepositoryInterface;
 use App\Config\Database;
 use App\Entities\Factura;
 use PDO;
+use PDOException;
 
 class FacturaRepository implements RepositoryInterface
 {
     private PDO $db;
-    private VentasRepository $ventasRepository;
 
     public function __construct()
     {
         $this->db = Database::getConnection();
-        $this->ventasRepository = new VentasRepository();
     }
 
     private function hydrate(array $row): Factura
     {
-        $venta = $this->ventasRepository->findById((int)$row['id_venta']);
+        $fecha = isset($row['fechaEmision']) && $row['fechaEmision'] !== null
+            ? new \DateTime((string)$row['fechaEmision'])
+            : new \DateTime();
 
         return new Factura(
-            (int)$row['id_factura'],
-            $venta,
-            $row['fecha_emision'],
-            (float)$row['total']
+            (int)$row['id'],
+            (int)$row['idVenta'],
+            (string)($row['numero'] ?? ''),
+            (string)($row['claveAcceso'] ?? ''),
+            $fecha,
+            (string)($row['estado'] ?? 'PENDIENTE')
         );
     }
 
     public function findAll(): array
     {
-        $stmt = $this->db->query('CALL sp_factura_list();');
-        $rows = $stmt->fetchAll();
-        $stmt->closeCursor();
+        try {
+            $stmt = $this->db->query('CALL sp_factura_list()');
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            $stmt->closeCursor();
 
-        $facturas = [];
-        foreach ($rows as $r) {
-            $facturas[] = $this->hydrate($r);
+            $out = [];
+            foreach ($rows as $r) {
+                $out[] = $this->hydrate($r);
+            }
+            return $out;
+        } catch (PDOException $e) {
+            throw new \RuntimeException('Error al listar facturas: '.$e->getMessage(), 0, $e);
         }
-        return $facturas;
+    }
+
+    public function findById(int $id): ?object
+    {
+        try {
+            $stmt = $this->db->prepare('CALL sp_find_factura(?)');
+            $stmt->execute([$id]);
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            $stmt->closeCursor();
+
+            return $row ? $this->hydrate($row) : null;
+        } catch (PDOException $e) {
+            if (stripos($e->getMessage(), 'sp_find_factura') !== false) {
+                $stmt = $this->db->prepare('CALL sp_factura_find_by_id(?)');
+                $stmt->execute([$id]);
+                $row = $stmt->fetch(PDO::FETCH_ASSOC);
+                $stmt->closeCursor();
+                return $row ? $this->hydrate($row) : null;
+            }
+            throw new \RuntimeException('Error al buscar factura: '.$e->getMessage(), 0, $e);
+        }
     }
 
     public function create(object $entity): bool
@@ -51,18 +78,19 @@ class FacturaRepository implements RepositoryInterface
             throw new \InvalidArgumentException('Expected instance of Factura');
         }
 
-        $stmt = $this->db->prepare('CALL sp_create_factura(:id_venta, :fecha_emision, :total);');
-        $ok = $stmt->execute([
-            ':id_venta' => $entity->getVenta()->getId(),
-            ':fecha_emision' => $entity->getFechaEmision(),
-            ':total' => $entity->getTotal()
-        ]);
-
-        if (!$ok) {
-            $ok->fetchAll();
+        try {
+            $stmt = $this->db->prepare('CALL sp_factura_create(?, ?, ?)');
+            $ok = $stmt->execute([
+                $entity->getIdVenta(),
+                $entity->getNumero(),
+                $entity->getClaveAcceso()
+            ]);
+            // $row = $stmt->fetch(PDO::FETCH_ASSOC); $newId = $row['factura_id'] ?? null;
+            $stmt->closeCursor();
+            return (bool)$ok;
+        } catch (PDOException $e) {
+            throw new \RuntimeException('Error al crear factura: '.$e->getMessage(), 0, $e);
         }
-        $stmt->closeCursor();
-        return $ok;
     }
 
     public function update(object $entity): bool
@@ -71,40 +99,86 @@ class FacturaRepository implements RepositoryInterface
             throw new \InvalidArgumentException('Expected instance of Factura');
         }
 
-        $stmt = $this->db->prepare('CALL sp_update_factura(:id_factura, :id_venta, :fecha_emision, :total);');
-        $ok = $stmt->execute([
-            ':id_factura' => $entity->getId(),
-            ':id_venta' => $entity->getVenta()->getId(),
-            ':fecha_emision' => $entity->getFechaEmision(),
-            ':total' => $entity->getTotal()
-        ]);
+        try {
+            $estado = strtoupper($entity->getEstado());
 
-        if (!$ok) {
-            $ok->fetchAll();
+            if ($estado === 'ENVIADA') {
+                $stmt = $this->db->prepare('CALL sp_factura_mark_enviada(?, ?, ?)');
+                $ok = $stmt->execute([
+                    $entity->getId(),
+                    $entity->getNumero() ?: null,
+                    $entity->getClaveAcceso() ?: null
+                ]);
+                $stmt->fetchAll(PDO::FETCH_ASSOC); 
+                $stmt->closeCursor();
+                return (bool)$ok;
+            }
+
+            if ($estado === 'ANULADA') {
+                $stmt = $this->db->prepare('CALL sp_factura_anular(?)');
+                $ok = $stmt->execute([$entity->getId()]);
+                $stmt->fetchAll(PDO::FETCH_ASSOC);
+                $stmt->closeCursor();
+                return (bool)$ok;
+            }
+
+            return false;
+        } catch (PDOException $e) {
+            throw new \RuntimeException('Error al actualizar factura: '.$e->getMessage(), 0, $e);
         }
-        $stmt->closeCursor();
-        return $ok;
     }
 
     public function delete(int $id): bool
     {
-        $stmt = $this->db->prepare('CALL sp_delete_factura(:id_factura);');
-        $ok = $stmt->execute([':id_factura' => $id]);
-
-        if (!$ok) {
-            $ok->fetchAll();
+        try {
+            $stmt = $this->db->prepare('CALL sp_factura_anular(?)');
+            $ok = $stmt->execute([$id]);
+            $stmt->fetchAll(PDO::FETCH_ASSOC);
+            $stmt->closeCursor();
+            return (bool)$ok;
+        } catch (PDOException $e) {
+            throw new \RuntimeException('Error al anular factura: '.$e->getMessage(), 0, $e);
         }
-        $stmt->closeCursor();
-        return $ok;
     }
 
-    public function findById(int $id): ?object
+ 
+    public function markEnviada(int $id, ?string $numero = null, ?string $claveAcceso = null): bool
     {
-        $stmt = $this->db->prepare('CALL sp_factura_find_by_id(:id_factura);');
-        $stmt->execute([':id_factura' => $id]);
-        $row = $stmt->fetch();
-        $stmt->closeCursor();
+        try {
+            $stmt = $this->db->prepare('CALL sp_factura_mark_enviada(?, ?, ?)');
+            $ok = $stmt->execute([$id, $numero, $claveAcceso]);
+            $stmt->fetchAll(PDO::FETCH_ASSOC); 
+            $stmt->closeCursor();
+            return (bool)$ok;
+        } catch (PDOException $e) {
+            throw new \RuntimeException('Error al marcar enviada: '.$e->getMessage(), 0, $e);
+        }
+    }
 
-        return $row ? $this->hydrate($row) : null;
+    public function anular(int $id): bool
+    {
+        try {
+            $stmt = $this->db->prepare('CALL sp_factura_anular(?)');
+            $ok = $stmt->execute([$id]);
+            $stmt->fetchAll(PDO::FETCH_ASSOC); 
+            $stmt->closeCursor();
+            return (bool)$ok;
+        } catch (PDOException $e) {
+            throw new \RuntimeException('Error al anular factura: '.$e->getMessage(), 0, $e);
+        }
+    }
+
+    public function findByVenta(int $idVenta): ?Factura
+    {
+        try {
+            $stmt = $this->db->prepare('CALL sp_factura_by_venta(?)');
+            $stmt->execute([$idVenta]);
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            $stmt->closeCursor();
+
+            return $row ? $this->hydrate($row) : null;
+        } catch (PDOException $e) {
+            throw new \RuntimeException('Error al buscar factura por venta: '.$e->getMessage(), 0, $e);
+        }
     }
 }

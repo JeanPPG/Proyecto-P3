@@ -1,5 +1,4 @@
 <?php
-
 declare(strict_types=1);
 
 namespace App\Repositories;
@@ -8,6 +7,7 @@ use App\Interfaces\RepositoryInterface;
 use App\Config\Database;
 use App\Entities\Permiso;
 use PDO;
+use PDOException;
 
 class PermisoRepository implements RepositoryInterface
 {
@@ -21,23 +21,47 @@ class PermisoRepository implements RepositoryInterface
     private function hydrate(array $row): Permiso
     {
         return new Permiso(
-            (int)$row['id_permiso'],
-            $row['nombre'],
-            $row['descripcion']
+            (int)$row['id'],
+            (string)$row['codigo']
         );
     }
 
     public function findAll(): array
     {
-        $stmt = $this->db->query('CALL sp_permiso_list();');
-        $rows = $stmt->fetchAll();
-        $stmt->closeCursor();
+        try {
+            $stmt = $this->db->query('CALL sp_permiso_list()');
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            $stmt->closeCursor();
 
-        $permisos = [];
-        foreach ($rows as $r) {
-            $permisos[] = $this->hydrate($r);
+            $items = [];
+            foreach ($rows as $r) {
+                $items[] = $this->hydrate($r);
+            }
+            return $items;
+        } catch (PDOException $e) {
+            throw new \RuntimeException('Error al listar permisos: '.$e->getMessage(), 0, $e);
         }
-        return $permisos;
+    }
+
+    public function findById(int $id): ?object
+    {
+        try {
+            $stmt = $this->db->prepare('CALL sp_find_permiso(?)');
+            $stmt->execute([$id]);
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            $stmt->closeCursor();
+
+            if (!$row) {
+                $stmt = $this->db->prepare('CALL sp_permiso_find_by_id(?)');
+                $stmt->execute([$id]);
+                $row = $stmt->fetch(PDO::FETCH_ASSOC);
+                $stmt->closeCursor();
+            }
+
+            return $row ? $this->hydrate($row) : null;
+        } catch (PDOException $e) {
+            throw new \RuntimeException('Error al buscar permiso: '.$e->getMessage(), 0, $e);
+        }
     }
 
     public function create(object $entity): bool
@@ -46,17 +70,14 @@ class PermisoRepository implements RepositoryInterface
             throw new \InvalidArgumentException('Expected instance of Permiso');
         }
 
-        $stmt = $this->db->prepare('CALL sp_create_permiso(:nombre, :descripcion);');
-        $ok = $stmt->execute([
-            ':nombre' => $entity->getNombre(),
-            ':descripcion' => $entity->getDescripcion()
-        ]);
-
-        if (!$ok) {
-            $ok->fetchAll();
+        try {
+            $stmt = $this->db->prepare('CALL sp_create_permiso(?)');
+            $ok = $stmt->execute([$entity->getCodigo()]);
+            $stmt->closeCursor();
+            return (bool)$ok;
+        } catch (PDOException $e) {
+            throw new \RuntimeException('Error al crear permiso: '.$e->getMessage(), 0, $e);
         }
-        $stmt->closeCursor();
-        return $ok;
     }
 
     public function update(object $entity): bool
@@ -65,39 +86,26 @@ class PermisoRepository implements RepositoryInterface
             throw new \InvalidArgumentException('Expected instance of Permiso');
         }
 
-        $stmt = $this->db->prepare('CALL sp_update_permiso(:id_permiso, :nombre, :descripcion);');
-        $ok = $stmt->execute([
-            ':id_permiso' => $entity->getId(),
-            ':nombre' => $entity->getNombre(),
-            ':descripcion' => $entity->getDescripcion()
-        ]);
-
-        if (!$ok) {
-            $ok->fetchAll();
+        try {
+            $stmt = $this->db->prepare('CALL sp_update_permiso(?, ?)');
+            $ok = $stmt->execute([$entity->getId(), $entity->getCodigo()]);
+            $stmt->fetchAll(PDO::FETCH_ASSOC);
+            $stmt->closeCursor();
+            return (bool)$ok;
+        } catch (PDOException $e) {
+            throw new \RuntimeException('Error al actualizar permiso: '.$e->getMessage(), 0, $e);
         }
-        $stmt->closeCursor();
-        return $ok;
     }
 
     public function delete(int $id): bool
     {
-        $stmt = $this->db->prepare('CALL sp_delete_permiso(:id_permiso);');
-        $ok = $stmt->execute([':id_permiso' => $id]);
-
-        if (!$ok) {
-            $ok->fetchAll();
+        try {
+            $stmt = $this->db->prepare('CALL sp_delete_permiso(?)');
+            $ok = $stmt->execute([$id]);
+            $stmt->closeCursor();
+            return (bool)$ok;
+        } catch (PDOException $e) {
+            throw new \RuntimeException('Error al eliminar permiso: '.$e->getMessage(), 0, $e);
         }
-        $stmt->closeCursor();
-        return $ok;
-    }
-
-    public function findById(int $id): ?object
-    {
-        $stmt = $this->db->prepare('CALL sp_permiso_find_by_id(:id_permiso);');
-        $stmt->execute([':id_permiso' => $id]);
-        $row = $stmt->fetch();
-        $stmt->closeCursor();
-
-        return $row ? $this->hydrate($row) : null;
     }
 }
