@@ -1,5 +1,4 @@
 <?php
-
 declare(strict_types=1);
 
 namespace App\Repositories;
@@ -8,6 +7,7 @@ use App\Interfaces\RepositoryInterface;
 use App\Config\Database;
 use App\Entities\PersonaNatural;
 use PDO;
+use PDOException;
 
 class PersonaNaturalRepository implements RepositoryInterface
 {
@@ -18,99 +18,117 @@ class PersonaNaturalRepository implements RepositoryInterface
         $this->db = Database::getConnection();
     }
 
-
+    /** SP list/find devuelven:
+     *  id, nombres, apellidos, cedula, email, telefono, direccion, tipo
+     *  El constructor requiere: id, email, telefono, direccion, tipo, nombres, apellidos, cedula
+     */
     private function hydrate(array $row): PersonaNatural
     {
         return new PersonaNatural(
-            (int)$row['id_persona_natural'],
-            $row['nombre'],
-            $row['apellido'],
-            $row['cedula'],
-            $row['direccion'],
-            $row['telefono'],
-            $row['email']
+            (int)$row['id'],
+            (string)$row['email'],
+            (string)$row['telefono'],
+            (string)$row['direccion'],
+            (string)$row['tipo'],
+            (string)$row['nombres'],
+            (string)$row['apellidos'],
+            (string)$row['cedula']
         );
     }
 
     public function findAll(): array
     {
-        $stmt = $this->db->query('CALL sp_persona_natural_list();');
-        $rows = $stmt->fetchAll();
-        $stmt->closeCursor();
+        try {
+            $stmt = $this->db->query('CALL sp_persona_natural_list()');
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            $stmt->closeCursor();
 
-        $listado = [];
-        foreach ($rows as $r) {
-            $listado[] = $this->hydrate($r);
+            $out = [];
+            foreach ($rows as $r) {
+                $out[] = $this->hydrate($r);
+            }
+            return $out;
+        } catch (PDOException $e) {
+            throw new \RuntimeException('Error al listar personas naturales: '.$e->getMessage(), 0, $e);
         }
-        return $listado;
     }
 
     public function create(object $entity): bool
     {
         if (!$entity instanceof PersonaNatural) {
-            throw new \InvalidArgumentException('Expected instance of PersonaNatural');
+            throw new \InvalidArgumentException('Se esperaba PersonaNatural');
         }
-
-        $stmt = $this->db->prepare('CALL sp_create_persona_natural(:nombre, :apellido, :cedula, :direccion, :telefono, :email);');
-        $ok = $stmt->execute([
-            ':nombre' => $entity->getNombre(),
-            ':apellido' => $entity->getApellido(),
-            ':cedula' => $entity->getCedula(),
-            ':direccion' => $entity->getDireccion(),
-            ':telefono' => $entity->getTelefono(),
-            ':email' => $entity->getEmail()
-        ]);
-
-        if (!$ok) {
-            $ok->fetchAll();
+        try {
+            // Orden según SP: email, telefono, direccion, nombres, apellidos, cedula
+            $stmt = $this->db->prepare('CALL sp_create_persona_natural(?,?,?,?,?,?)');
+            $ok = $stmt->execute([
+                $entity->getEmail(),
+                $entity->getTelefono(),
+                $entity->getDireccion(),
+                $entity->getNombres(),
+                $entity->getApellidos(),
+                $entity->getCedula()
+            ]);
+            $stmt->closeCursor();
+            return $ok;
+        } catch (PDOException $e) {
+            throw new \RuntimeException('Error al crear persona natural: '.$e->getMessage(), 0, $e);
         }
-        $stmt->closeCursor();
-        return $ok;
     }
 
     public function update(object $entity): bool
     {
         if (!$entity instanceof PersonaNatural) {
-            throw new \InvalidArgumentException('Expected instance of PersonaNatural');
+            throw new \InvalidArgumentException('Se esperaba PersonaNatural');
         }
-
-        $stmt = $this->db->prepare('CALL sp_update_persona_natural(:id_persona_natural, :nombre, :apellido, :cedula, :direccion, :telefono, :email);');
-        $ok = $stmt->execute([
-            ':id_persona_natural' => $entity->getId(),
-            ':nombre' => $entity->getNombre(),
-            ':apellido' => $entity->getApellido(),
-            ':cedula' => $entity->getCedula(),
-            ':direccion' => $entity->getDireccion(),
-            ':telefono' => $entity->getTelefono(),
-            ':email' => $entity->getEmail()
-        ]);
-
-        if (!$ok) {
-            $ok->fetchAll();
+        try {
+            // Orden según SP: id, telefono, direccion, nombres, apellidos, cedula
+            $stmt = $this->db->prepare('CALL sp_update_persona_natural(?,?,?,?,?,?)');
+            $ok = $stmt->execute([
+                $entity->getId(),
+                $entity->getTelefono(),
+                $entity->getDireccion(),
+                $entity->getNombres(),
+                $entity->getApellidos(),
+                $entity->getCedula()
+            ]);
+            $stmt->closeCursor();
+            return $ok;
+        } catch (PDOException $e) {
+            throw new \RuntimeException('Error al actualizar persona natural: '.$e->getMessage(), 0, $e);
         }
-        $stmt->closeCursor();
-        return $ok;
     }
 
     public function delete(int $id): bool
     {
-        $stmt = $this->db->prepare('CALL sp_delete_persona_natural(:id_persona_natural);');
-        $ok = $stmt->execute([':id_persona_natural' => $id]);
-
-        if (!$ok) {
-            $ok->fetchAll();
+        try {
+            $stmt = $this->db->prepare('CALL sp_delete_persona_natural(?)');
+            $ok = $stmt->execute([$id]);
+            $stmt->closeCursor();
+            return $ok;
+        } catch (PDOException $e) {
+            throw new \RuntimeException('Error al eliminar persona natural: '.$e->getMessage(), 0, $e);
         }
-        $stmt->closeCursor();
-        return $ok;
     }
 
     public function findById(int $id): ?object
     {
-        $stmt = $this->db->prepare('CALL sp_persona_natural_find_by_id(:id_persona_natural);');
-        $stmt->execute([':id_persona_natural' => $id]);
-        $row = $stmt->fetch();
-        $stmt->closeCursor();
-
-        return $row ? $this->hydrate($row) : null;
+        try {
+            $stmt = $this->db->prepare('CALL sp_find_persona_natural(?)');
+            $stmt->execute([$id]);
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            $stmt->closeCursor();
+            return $row ? $this->hydrate($row) : null;
+        } catch (PDOException $e) {
+            // fallback si tu SP aún se llama distinto
+            if (stripos($e->getMessage(), 'sp_find_persona_natural') !== false) {
+                $stmt = $this->db->prepare('CALL sp_persona_natural_find_by_id(?)');
+                $stmt->execute([$id]);
+                $row = $stmt->fetch(PDO::FETCH_ASSOC);
+                $stmt->closeCursor();
+                return $row ? $this->hydrate($row) : null;
+            }
+            throw new \RuntimeException('Error al buscar persona natural: '.$e->getMessage(), 0, $e);
+        }
     }
 }
