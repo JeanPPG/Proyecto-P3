@@ -11,7 +11,6 @@ class PersonaNatural extends Cliente {
     private string $apellidos;
     private string $cedula;
 
-    private int 
 
     public function __construct(int $id, string $email, string $telefono, string $direccion, string $tipo, string $nombres, string $apellidos, string $cedula) {
         parent::__construct($id, $email, $telefono, $direccion);
