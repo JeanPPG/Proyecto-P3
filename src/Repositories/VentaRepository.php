@@ -9,7 +9,7 @@ use App\Config\Database;
 use App\Entities\Venta;
 use PDO;
 
-class VentasRepository implements RepositoryInterface
+class VentaRepository implements RepositoryInterface
 {
     private PDO $db;
     private PersonaNaturalRepository $personaNaturalRepository;
