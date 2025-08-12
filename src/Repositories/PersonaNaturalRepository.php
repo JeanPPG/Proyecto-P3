@@ -18,10 +18,6 @@ class PersonaNaturalRepository implements RepositoryInterface
         $this->db = Database::getConnection();
     }
 
-    /** SP list/find devuelven:
-     *  id, nombres, apellidos, cedula, email, telefono, direccion, tipo
-     *  El constructor requiere: id, email, telefono, direccion, tipo, nombres, apellidos, cedula
-     */
     private function hydrate(array $row): PersonaNatural
     {
         return new PersonaNatural(
@@ -59,7 +55,6 @@ class PersonaNaturalRepository implements RepositoryInterface
             throw new \InvalidArgumentException('Se esperaba PersonaNatural');
         }
         try {
-            // Orden según SP: email, telefono, direccion, nombres, apellidos, cedula
             $stmt = $this->db->prepare('CALL sp_create_persona_natural(?,?,?,?,?,?)');
             $ok = $stmt->execute([
                 $entity->getEmail(),
@@ -82,7 +77,7 @@ class PersonaNaturalRepository implements RepositoryInterface
             throw new \InvalidArgumentException('Se esperaba PersonaNatural');
         }
         try {
-            // Orden según SP: id, telefono, direccion, nombres, apellidos, cedula
+
             $stmt = $this->db->prepare('CALL sp_update_persona_natural(?,?,?,?,?,?)');
             $ok = $stmt->execute([
                 $entity->getId(),
@@ -120,7 +115,6 @@ class PersonaNaturalRepository implements RepositoryInterface
             $stmt->closeCursor();
             return $row ? $this->hydrate($row) : null;
         } catch (PDOException $e) {
-            // fallback si tu SP aún se llama distinto
             if (stripos($e->getMessage(), 'sp_find_persona_natural') !== false) {
                 $stmt = $this->db->prepare('CALL sp_persona_natural_find_by_id(?)');
                 $stmt->execute([$id]);
