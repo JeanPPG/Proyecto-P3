@@ -1,4 +1,34 @@
 const createPersonaNaturalPanel = () => {
+    // Función para validar cédula ecuatoriana
+    const validarCedulaEcuatoriana = (cedula) => {
+        if (!cedula || cedula.length !== 10) return false;
+        
+        // Verificar que solo contenga números
+        if (!/^\d{10}$/.test(cedula)) return false;
+        
+        // Verificar que los primeros dos dígitos correspondan a una provincia válida (01-24)
+        const provincia = parseInt(cedula.substring(0, 2));
+        if (provincia < 1 || provincia > 24) return false;
+        
+        // Algoritmo de validación del dígito verificador
+        const coeficientes = [2, 1, 2, 1, 2, 1, 2, 1, 2];
+        let suma = 0;
+        
+        for (let i = 0; i < coeficientes.length; i++) {
+            let valor = parseInt(cedula.charAt(i)) * coeficientes[i];
+            if (valor >= 10) {
+                valor -= 9;
+            }
+            suma += valor;
+        }
+        
+        const digitoVerificador = parseInt(cedula.charAt(9));
+        const modulo = suma % 10;
+        const resultado = modulo === 0 ? 0 : 10 - modulo;
+        
+        return resultado === digitoVerificador;
+    };
+
     Ext.define('App.model.PersonaNatural', {
         extend: 'Ext.data.Model',
         idProperty: 'id',
@@ -44,8 +74,22 @@ const createPersonaNaturalPanel = () => {
                     let msg = 'Error de servidor';
                     try {
                         const j = JSON.parse(response.responseText);
-                        if (j && (j.error || j.message)) msg = j.error || j.message;
-                    } catch (e) {}
+                        if (j && (j.error || j.message)) {
+                            // Verificar si es un error específico de cédula
+                            const errorMsg = j.error || j.message;
+                            if (errorMsg.toLowerCase().includes('cedula') || 
+                                errorMsg.toLowerCase().includes('cédula') ||
+                                errorMsg.toLowerCase().includes('identificacion') ||
+                                errorMsg.toLowerCase().includes('identificación')) {
+                                msg = 'La cédula ingresada no es válida. Por favor verifique el número.';
+                            } else {
+                                msg = errorMsg;
+                            }
+                        }
+                    } catch (e) {
+                        // Si no se puede parsear la respuesta, mantener mensaje genérico
+                        msg = 'Error de servidor';
+                    }
                     Ext.Msg.alert('Error', msg);
                 }
             }
@@ -78,7 +122,25 @@ const createPersonaNaturalPanel = () => {
                         minLength: 10,
                         maxLength: 10,
                         regex: /^[0-9]{10}$/,
-                        regexText: 'La cédula debe tener 10 dígitos y ser valida.'
+                        regexText: 'La cédula debe tener 10 dígitos.',
+                        validator: function(value) {
+                            if (!value) return true; // Permitir vacío para que allowBlank maneje esto
+                            if (!validarCedulaEcuatoriana(value)) {
+                                return 'La cédula ingresada no es válida según el algoritmo de validación ecuatoriano.';
+                            }
+                            return true;
+                        },
+                        listeners: {
+                            blur: function(field) {
+                                // Validar en tiempo real cuando el usuario sale del campo
+                                const value = field.getValue();
+                                if (value && value.length === 10) {
+                                    if (!validarCedulaEcuatoriana(value)) {
+                                        field.markInvalid('La cédula ingresada no es válida.');
+                                    }
+                                }
+                            }
+                        }
                     }
                 ]
             }],
@@ -89,6 +151,16 @@ const createPersonaNaturalPanel = () => {
                     handler: () => {
                         const form = win.down('form').getForm();
                         if (!form.isValid()) return;
+
+                        // Validación adicional antes de enviar
+                        const cedulaField = form.findField('cedula');
+                        const cedulaValue = cedulaField.getValue();
+                        
+                        if (!validarCedulaEcuatoriana(cedulaValue)) {
+                            Ext.Msg.alert('Error de Validación', 'La cédula ingresada no es válida. Por favor verifique el número.');
+                            cedulaField.focus();
+                            return;
+                        }
 
                         form.updateRecord(rec);
                         rec.set('tipo', 'NATURAL');
@@ -107,7 +179,18 @@ const createPersonaNaturalPanel = () => {
                                 if (op && op.error && op.error.response) {
                                     try {
                                         const j = JSON.parse(op.error.response.responseText);
-                                        if (j && (j.error || j.message)) msg = j.error || j.message;
+                                        if (j && (j.error || j.message)) {
+                                            const errorMsg = j.error || j.message;
+                                            // Verificar si es un error específico de cédula
+                                            if (errorMsg.toLowerCase().includes('cedula') || 
+                                                errorMsg.toLowerCase().includes('cédula') ||
+                                                errorMsg.toLowerCase().includes('identificacion') ||
+                                                errorMsg.toLowerCase().includes('identificación')) {
+                                                msg = 'La cédula ingresada no es válida o ya existe en el sistema.';
+                                            } else {
+                                                msg = errorMsg;
+                                            }
+                                        }
                                     } catch (e) {}
                                 }
                                 Ext.Msg.alert('Error', msg);
