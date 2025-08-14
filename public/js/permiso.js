@@ -2,10 +2,10 @@ const createPermisoPanel = () => {
     Ext.define('App.model.Permiso', {
         extend: 'Ext.data.Model',
         fields: [
-            { name: 'idRol', type: 'int' },
-            { name: 'idPermiso', type: 'int' }
+            { name: 'id', type: 'int' },
+            { name: 'codigo', type: 'string' }
         ],
-        idProperty: ['idRol', 'idPermiso'] // Clave compuesta
+        idProperty: ['id'] 
     });
 
     const permisoStore = Ext.create('Ext.data.Store', {
@@ -13,7 +13,7 @@ const createPermisoPanel = () => {
         model: 'App.model.Permiso',
         proxy: {
             type: 'rest',
-            url: '/api/rol_permiso.php', // Asumiendo que la API es para RolPermiso
+            url: '/api/permiso.php', // Asumiendo que la API es para RolPermiso
             reader: {
                 type: 'json',
                 transform: function (data) {
@@ -58,8 +58,8 @@ const createPermisoPanel = () => {
                     bodyPadding: 12,
                     defaults: { anchor: '100%', msgTarget: 'side' },
                     items: [
-                        { xtype: 'numberfield', name: 'idRol', fieldLabel: 'ID Rol', allowBlank: false },
-                        { xtype: 'numberfield', name: 'idPermiso', fieldLabel: 'ID Permiso', allowBlank: false }
+                        { xtype: 'numberfield', name: 'id', fieldLabel: 'ID Rol', allowBlank: false },
+                        { xtype: 'textfield', name: 'codigo', fieldLabel: 'Código', allowBlank: false }
                     ]
                 }
             ],
@@ -112,8 +112,8 @@ const createPermisoPanel = () => {
         layout: 'fit',
         selModel: { selType: 'rowmodel', mode: 'SINGLE' },
         columns: [
-            { text: 'ID Rol', dataIndex: 'idRol', width: 100 },
-            { text: 'ID Permiso', dataIndex: 'idPermiso', flex: 1 }
+            { text: 'ID Rol', dataIndex: 'id', width: 100 },
+            { text: 'Código', dataIndex: 'codigo', flex: 1 }
         ],
         tbar: [
             {

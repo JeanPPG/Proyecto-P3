@@ -7,6 +7,8 @@ Ext.onReady(() => {
     const facturaPanel        = createFacturaPanel();
     const ventaPanel          = createVentaPanel();
     const detalleVentaPanel   = createDetalleVentaPanel();
+    const permisoPanel        = createPermisoPanel();
+    const rolPanel            = createRolPanel();
 
     const mainCard = Ext.create('Ext.panel.Panel', {
         region: 'center',
@@ -19,7 +21,9 @@ Ext.onReady(() => {
             usuarioPanel,
             facturaPanel,
             ventaPanel,
-            detalleVentaPanel
+            detalleVentaPanel,
+            permisoPanel,
+            rolPanel
         ],
     });
 
@@ -77,6 +81,18 @@ Ext.onReady(() => {
                         text: 'Detalles de Venta',
                         handler: () => {
                             mainCard.getLayout().setActiveItem(detalleVentaPanel);
+                        }
+                    },
+                    {
+                        text: 'Permisos',
+                        handler: () => {
+                            mainCard.getLayout().setActiveItem(permisoPanel);
+                        }
+                    },
+                    {
+                        text: 'Roles',
+                        handler: () => {
+                            mainCard.getLayout().setActiveItem(rolPanel);
                         }
                     }
                 ],
