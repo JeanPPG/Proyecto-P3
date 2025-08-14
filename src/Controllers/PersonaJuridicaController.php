@@ -15,94 +15,102 @@ final class PersonaJuridicaController
         $this->repo = new PersonaJuridicaRepository();
     }
 
+    // src/Controllers/PersonaJuridicaController.php
     public function handle(): void
     {
         header('Content-Type: application/json; charset=utf-8');
-
         $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 
-        if ($method === 'GET') {
-            if (isset($_GET['id'])) {
-                $item = $this->repo->findById((int)$_GET['id']);
-                echo json_encode($item ? $this->toArray($item) : null, JSON_UNESCAPED_UNICODE);
-            } else {
-                $list = array_map([$this, 'toArray'], $this->repo->findAll());
-                echo json_encode($list, JSON_UNESCAPED_UNICODE);
+        try {
+            if ($method === 'GET') {
+                if (isset($_GET['id'])) {
+                    $item = $this->repo->findById((int)$_GET['id']);
+                    echo json_encode($item ? $this->toArray($item) : null, JSON_UNESCAPED_UNICODE);
+                } else {
+                    $list = array_map([$this, 'toArray'], $this->repo->findAll());
+                    echo json_encode($list, JSON_UNESCAPED_UNICODE);
+                }
+                return;
             }
-            return;
-        }
 
-        $payload = $this->readJson();
+            $payload = $this->readJson();
 
-        if ($method === 'POST') {
-            foreach (['email','telefono','direccion','razonSocial','ruc'] as $f) {
-                if (!isset($payload[$f]) || (is_string($payload[$f]) && trim($payload[$f])==='')) {
+            if ($method === 'POST') {
+                foreach (['email','telefono','direccion','razonSocial','ruc'] as $f) {
+                    if (!isset($payload[$f]) || (is_string($payload[$f]) && trim($payload[$f])==='')) {
+                        http_response_code(400);
+                        echo json_encode(['error' => "Campo requerido: $f"]);
+                        return;
+                    }
+                }
+
+                $entity = new PersonaJuridica(
+                    0,
+                    (string)$payload['email'],
+                    (string)$payload['telefono'],
+                    (string)$payload['direccion'],
+                    'JURIDICA', // blindado en servidor
+                    (string)$payload['razonSocial'],
+                    (string)$payload['ruc'],
+                    $payload['representanteLegal'] ?? null
+                );
+
+                $ok = $this->repo->create($entity);
+                echo json_encode(['success' => (bool)$ok], JSON_UNESCAPED_UNICODE);
+                return;
+            }
+
+            if ($method === 'PUT') {
+                $id = (int)($payload['id'] ?? 0);
+                if ($id <= 0) {
                     http_response_code(400);
-                    echo json_encode(['error' => "Campo requerido: $f"]);
+                    echo json_encode(['error' => 'Falta id']);
                     return;
                 }
-            }
 
-            $entity = new PersonaJuridica(
-                0,
-                (string)$payload['email'],
-                (string)$payload['telefono'],
-                (string)$payload['direccion'],
-                'JURIDICA',
-                (string)$payload['razonSocial'],
-                (string)$payload['ruc'],
-                $payload['representanteLegal'] ?? null
-            );
+                $existing = $this->repo->findById($id);
+                if (!$existing) {
+                    http_response_code(404);
+                    echo json_encode(['error' => 'Persona jurídica no encontrada']);
+                    return;
+                }
 
-            $ok = $this->repo->create($entity);
-            echo json_encode(['success' => (bool)$ok], JSON_UNESCAPED_UNICODE);
-            return;
-        }
+                if (isset($payload['email']))       { $existing->setEmail((string)$payload['email']); }
+                if (isset($payload['telefono']))    { $existing->setTelefono((string)$payload['telefono']); }
+                if (isset($payload['direccion']))   { $existing->setDireccion((string)$payload['direccion']); }
+                if (isset($payload['razonSocial'])) { $existing->setRazonSocial((string)$payload['razonSocial']); }
+                if (isset($payload['ruc']))         { $existing->setRuc((string)$payload['ruc']); }
+                if (array_key_exists('representanteLegal', $payload)) {
+                    $existing->setRepresentanteLegal(
+                        $payload['representanteLegal'] !== null ? (string)$payload['representanteLegal'] : null
+                    );
+                }
 
-        if ($method === 'PUT') {
-            $id = (int)($payload['id'] ?? 0);
-            if ($id <= 0) {
-                http_response_code(400);
-                echo json_encode(['error' => 'Falta id']);
+                $ok = $this->repo->update($existing);
+                echo json_encode(['success' => (bool)$ok], JSON_UNESCAPED_UNICODE);
                 return;
             }
 
-            $existing = $this->repo->findById($id);
-            if (!$existing) {
-                http_response_code(404);
-                echo json_encode(['error' => 'Persona jurídica no encontrada']);
+            if ($method === 'DELETE') {
+                $id = (int)($payload['id'] ?? 0);
+                if ($id <= 0) {
+                    http_response_code(400);
+                    echo json_encode(['error' => 'Falta id']);
+                    return;
+                }
+                $ok = $this->repo->delete($id);
+                echo json_encode(['success' => (bool)$ok], JSON_UNESCAPED_UNICODE);
                 return;
             }
 
-            if (isset($payload['email']))              { $existing->setEmail((string)$payload['email']); }
-            if (isset($payload['telefono']))           { $existing->setTelefono((string)$payload['telefono']); }
-            if (isset($payload['direccion']))          { $existing->setDireccion((string)$payload['direccion']); }
-            if (isset($payload['razonSocial']))        { $existing->setRazonSocial((string)$payload['razonSocial']); }
-            if (isset($payload['ruc']))                { $existing->setRuc((string)$payload['ruc']); }
-            if (array_key_exists('representanteLegal', $payload)) {
-                $existing->setRepresentanteLegal($payload['representanteLegal'] !== null ? (string)$payload['representanteLegal'] : null);
-            }
-
-            $ok = $this->repo->update($existing);
-            echo json_encode(['success' => (bool)$ok], JSON_UNESCAPED_UNICODE);
-            return;
+            http_response_code(405);
+            echo json_encode(['error' => 'Método no permitido']);
+        } catch (\Throwable $e) {
+            http_response_code(400);
+            echo json_encode(['error' => $e->getMessage()]);
         }
-
-        if ($method === 'DELETE') {
-            $id = (int)($payload['id'] ?? 0);
-            if ($id <= 0) {
-                http_response_code(400);
-                echo json_encode(['error' => 'Falta id']);
-                return;
-            }
-            $ok = $this->repo->delete($id);
-            echo json_encode(['success' => (bool)$ok], JSON_UNESCAPED_UNICODE);
-            return;
-        }
-
-        http_response_code(405);
-        echo json_encode(['error' => 'Método no permitido']);
     }
+
 
     /* ---------------- helpers ---------------- */
 

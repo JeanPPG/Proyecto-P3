@@ -36,43 +36,25 @@ class PersonaJuridica extends Cliente {
     }
 
     public function setRuc(string $ruc): void {
-        // Debe tener 13 dígitos numéricos
+        $ruc = trim($ruc);
         if (strlen($ruc) !== 13 || !ctype_digit($ruc)) {
             throw new \InvalidArgumentException('El RUC debe tener 13 dígitos numéricos.');
         }
 
-        // Provincia: dos primeros dígitos entre 01 y 24
-        $prov = (int) substr($ruc, 0, 2);
+        $prov = (int)substr($ruc, 0, 2);
         if ($prov < 1 || $prov > 24) {
-            throw new \InvalidArgumentException('RUC con provincia inválida.');
+            throw new \InvalidArgumentException('Provincia inválida en el RUC.');
         }
 
-        // Tercer dígito: 9 = sociedad privada
-        $tercer = (int) $ruc[2];
-        if ($tercer !== 9) {
-            throw new \InvalidArgumentException('RUC de persona jurídica debe tener tercer dígito = 9.');
+        $tercer = (int)$ruc[2];
+        // Jurídicas: pública (6) o privada (9)
+        if (!in_array($tercer, [6, 9], true)) {
+            throw new \InvalidArgumentException('Para persona jurídica, el RUC debe tener tercer dígito 6 (pública) o 9 (privada).');
         }
 
-        // Los tres últimos dígitos (establecimiento) no pueden ser 000
-        if (substr($ruc, 10, 3) === '000') {
-            throw new \InvalidArgumentException('Los tres últimos dígitos del RUC no pueden ser 000.');
-        }
-
-        // Cálculo módulo 11 con coeficientes para personas privadas:
-        $coef = [4, 3, 2, 7, 6, 5, 4, 3, 2];
-        $suma = 0;
-        for ($i = 0; $i < 9; $i++) {
-            $suma += (int)$ruc[$i] * $coef[$i];
-        }
-        $res = $suma % 11;
-        $digVer = ($res === 0) ? 0 : (11 - $res);
-        if ($digVer === 10) {
-            $digVer = 0;
-        }
-
-        // Comparamos con el dígito verificador (posición 10, índice 9)
-        if ($digVer !== (int)$ruc[9]) {
-            throw new \InvalidArgumentException('RUC inválido según algoritmo Módulo 11.');
+        // (Opcional) Validar sufijo establecimiento '001'
+        if (substr($ruc, 10, 3) !== '001') {
+            throw new \InvalidArgumentException('El RUC debe terminar en 001 para el establecimiento principal.');
         }
 
         $this->ruc = $ruc;

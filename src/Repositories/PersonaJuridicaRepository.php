@@ -20,6 +20,7 @@ class PersonaJuridicaRepository implements RepositoryInterface
 
     private function hydrate(array $row): PersonaJuridica
     {
+        $row['tipo'] = $row['tipo'] ?? 'JURIDICA';
         return new PersonaJuridica(
             (int)$row['id'],
             (string)$row['email'],
@@ -31,6 +32,7 @@ class PersonaJuridicaRepository implements RepositoryInterface
             isset($row['representanteLegal']) ? (string)$row['representanteLegal'] : null
         );
     }
+
 
     public function findAll(): array
     {

@@ -147,7 +147,7 @@ BEGIN
 END;
 
 DROP PROCEDURE IF EXISTS sp_find_persona_juridica;
-
+DELIMITER //
 CREATE PROCEDURE sp_find_persona_juridica(IN p_id INT)
 BEGIN
     SELECT
@@ -157,15 +157,12 @@ BEGIN
         pj.representanteLegal,
         c.email,
         c.telefono,
-        c.direccion
-    FROM
-        Cliente c
-    JOIN
-        PersonaJuridica pj ON c.id = pj.id
-    WHERE
-        pj.id = p_id ;
-END;
-
+        c.direccion,
+        c.tipo     -- <<< AÑADIDO: para que hydrate($row['tipo']) no falle
+    FROM Cliente c
+    JOIN PersonaJuridica pj ON c.id = pj.id
+    WHERE pj.id = p_id;
+END//
 DELIMITER ;
 
 
