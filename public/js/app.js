@@ -5,10 +5,12 @@ Ext.onReady(() => {
 
     const productoFisicoPanel = createProductoFisicoPanel();
 
+    const productoDigitalPanel = createProductoDigitalPanel();
+
     const mainCard = Ext.create('Ext.panel.Panel',{
         region: 'center',
         layout: 'card',
-        items: [personaJuridicaPanel, personaNaturalPanel, productoFisicoPanel],
+        items: [personaJuridicaPanel, personaNaturalPanel, productoFisicoPanel, productoDigitalPanel],
     });
 
     Ext.create('Ext.container.Viewport', {
@@ -35,6 +37,12 @@ Ext.onReady(() => {
                         text: 'Producto Físico',
                         handler: () => {
                             mainCard.getLayout().setActiveItem(productoFisicoPanel);
+                        }
+                    },
+                    {
+                        text: 'Producto Digital',
+                        handler: () => {
+                            mainCard.getLayout().setActiveItem(productoDigitalPanel);
                         }
                     }
                 ],
