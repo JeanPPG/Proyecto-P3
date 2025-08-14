@@ -7,7 +7,6 @@ use App\Interfaces\RepositoryInterface;
 use App\Config\Database;
 use App\Entities\DetalleVenta;
 use PDO;
-use PDOException;
 
 class DetalleVentaRepository implements RepositoryInterface
 {
@@ -18,135 +17,127 @@ class DetalleVentaRepository implements RepositoryInterface
         $this->db = Database::getConnection();
     }
 
-    private function hydrate(array $row): DetalleVenta
+    /** Mapear fila -> Entidad */
+    private function hydrate(array $r): DetalleVenta
     {
         return new DetalleVenta(
-            (int)$row['idVenta'],
-            (int)$row['lineNumber'],
-            (int)$row['idProducto'],
-            (int)$row['cantidad'],
-            (float)$row['precioUnitario']
+            (int)$r['idVenta'],
+            (int)$r['lineNumber'],
+            (int)$r['idProducto'],
+            (int)$r['cantidad'],
+            (float)$r['precioUnitario']
         );
     }
 
-    public function listByVenta(int $idVenta): array
-    {
-        try {
-            $stmt = $this->db->prepare('CALL sp_detalle_venta_list(?)');
-            $stmt->execute([$idVenta]);
-            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-            $stmt->closeCursor();
-
-            $out = [];
-            foreach ($rows as $r) {
-                $out[] = $this->hydrate($r);
-            }
-            return $out;
-        } catch (PDOException $e) {
-            throw new \RuntimeException('Error al listar detalles: '.$e->getMessage(), 0, $e);
-        }
-    }
-
-    public function findOne(int $idVenta, int $lineNumber): ?DetalleVenta
-    {
-        try {
-            $stmt = $this->db->prepare('CALL sp_find_detalle_venta(?, ?)');
-            $stmt->execute([$idVenta, $lineNumber]);
-            $row = $stmt->fetch(PDO::FETCH_ASSOC);
-            $stmt->closeCursor();
-
-            return $row ? $this->hydrate($row) : null;
-        } catch (PDOException $e) {
-            if (stripos($e->getMessage(), 'sp_find_detalle_venta') !== false) {
-                $stmt = $this->db->prepare('CALL sp_detalle_venta_find_by_id(?, ?)');
-                $stmt->execute([$idVenta, $lineNumber]);
-                $row = $stmt->fetch(PDO::FETCH_ASSOC);
-                $stmt->closeCursor();
-                return $row ? $this->hydrate($row) : null;
-            }
-            throw new \RuntimeException('Error al buscar detalle: '.$e->getMessage(), 0, $e);
-        }
-    }
-
-    public function add(DetalleVenta $entity): bool
-    {
-        try {
-            $stmt = $this->db->prepare('CALL sp_detalle_venta_add(?, ?, ?, ?)');
-            $ok = $stmt->execute([
-                $entity->getIdVenta(),
-                $entity->getIdProducto(),
-                $entity->getCantidad(),
-                $entity->getPrecioUnitario()  
-            ]);
-            $stmt->fetchAll(PDO::FETCH_ASSOC);
-            $stmt->closeCursor();
-            return (bool)$ok;
-        } catch (PDOException $e) {
-            throw new \RuntimeException('Error al agregar detalle: '.$e->getMessage(), 0, $e);
-        }
-    }
-
-    public function updateLine(DetalleVenta $entity): bool
-    {
-        try {
-            $stmt = $this->db->prepare('CALL sp_detalle_venta_update(?, ?, ?, ?, ?)');
-            $ok = $stmt->execute([
-                $entity->getIdVenta(),
-                $entity->getLineNumber(),
-                $entity->getIdProducto(),
-                $entity->getCantidad(),
-                $entity->getPrecioUnitario()
-            ]);
-            $stmt->fetchAll(PDO::FETCH_ASSOC);
-            $stmt->closeCursor();
-            return (bool)$ok;
-        } catch (PDOException $e) {
-            throw new \RuntimeException('Error al actualizar detalle: '.$e->getMessage(), 0, $e);
-        }
-    }
-
-    public function deleteByPk(int $idVenta, int $lineNumber): bool
-    {
-        try {
-            $stmt = $this->db->prepare('CALL sp_detalle_venta_delete(?, ?)');
-            $ok = $stmt->execute([$idVenta, $lineNumber]);
-            $stmt->fetchAll(PDO::FETCH_ASSOC);
-            $stmt->closeCursor();
-            return (bool)$ok;
-        } catch (PDOException $e) {
-            throw new \RuntimeException('Error al eliminar detalle: '.$e->getMessage(), 0, $e);
-        }
-    }
-
-   
+    /** Listado global (si tienes SP global; si no, puedes lanzar excepción o devolver []) */
     public function findAll(): array
     {
-        throw new \BadMethodCallException('Usa listByVenta($idVenta) para obtener los detalles de una venta.');
+        // Si NO tienes un SP global, puedes:
+        // - devolver [] y no usar este método
+        // - o crear sp_detalle_venta_list_all()
+        $stmt = $this->db->query('CALL sp_detalle_venta_list_all()');
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        while ($stmt->nextRowset()) {}
+        $stmt->closeCursor();
+
+        return array_map(fn($r) => $this->hydrate($r), $rows);
     }
 
+    /** Lista por venta */
+    public function listByVenta(int $idVenta): array
+    {
+        $stmt = $this->db->prepare('CALL sp_detalle_venta_list(:idVenta)');
+        $stmt->execute([':idVenta' => $idVenta]);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        while ($stmt->nextRowset()) {}
+        $stmt->closeCursor();
+
+        return array_map(fn($r) => $this->hydrate($r), $rows);
+    }
+
+    /** Obtener una línea específica (PK compuesta) */
+    public function findOne(int $idVenta, int $lineNumber): ?DetalleVenta
+    {
+        $stmt = $this->db->prepare('CALL sp_find_detalle_venta(:idVenta, :lineNumber)');
+        $stmt->execute([':idVenta' => $idVenta, ':lineNumber' => $lineNumber]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+        while ($stmt->nextRowset()) {}
+        $stmt->closeCursor();
+
+        return $row ? $this->hydrate($row) : null;
+    }
+
+    /** Compatibilidad con RepositoryInterface: findById no aplica; devolvemos null siempre */
+    public function findById(int $id): ?object
+    {
+        // No aplica porque la PK es (idVenta, lineNumber)
+        return null;
+    }
+
+    /** Insertar línea (autonumera lineNumber en el SP) */
+    public function add(DetalleVenta $e): bool
+    {
+        $stmt = $this->db->prepare(
+            'CALL sp_detalle_venta_add(:idVenta, :idProducto, :cantidad, :precioUnitario)'
+        );
+        $ok = $stmt->execute([
+            ':idVenta'        => $e->getIdVenta(),
+            ':idProducto'     => $e->getIdProducto(),
+            ':cantidad'       => $e->getCantidad(),
+            ':precioUnitario' => $e->getPrecioUnitario(), // puede ser NULL si tu SP lo permite
+        ]);
+        while ($stmt->nextRowset()) {}
+        $stmt->closeCursor();
+        return (bool)$ok;
+    }
+
+    /** Compatibilidad con RepositoryInterface::create */
     public function create(object $entity): bool
     {
         if (!$entity instanceof DetalleVenta) {
-            throw new \InvalidArgumentException('Se esperaba DetalleVenta');
+            throw new \InvalidArgumentException('Expected instance of DetalleVenta');
         }
         return $this->add($entity);
     }
 
+    /** Actualizar línea */
     public function update(object $entity): bool
     {
         if (!$entity instanceof DetalleVenta) {
-            throw new \InvalidArgumentException('Se esperaba DetalleVenta');
+            throw new \InvalidArgumentException('Expected instance of DetalleVenta');
         }
-        return $this->updateLine($entity);
+
+        $stmt = $this->db->prepare(
+            'CALL sp_detalle_venta_update(:idVenta, :lineNumber, :idProducto, :cantidad, :precioUnitario)'
+        );
+        $ok = $stmt->execute([
+            ':idVenta'        => $entity->getIdVenta(),
+            ':lineNumber'     => $entity->getLineNumber(),
+            ':idProducto'     => $entity->getIdProducto(),
+            ':cantidad'       => $entity->getCantidad(),
+            ':precioUnitario' => $entity->getPrecioUnitario(), // puede ser NULL si tu SP lo permite
+        ]);
+        while ($stmt->nextRowset()) {}
+        $stmt->closeCursor();
+        return (bool)$ok;
     }
 
-    public function delete(int $id): bool
+    /** Eliminar por PK compuesta */
+    public function delete(int $idVenta, int $lineNumber = null): bool
     {
-        throw new \BadMethodCallException('Usa deleteByPk($idVenta, $lineNumber) para borrar una línea.');
-    }
+        // Permitimos firma (idVenta, lineNumber) para resolver tu error de "Too many arguments..."
+        if ($lineNumber === null) {
+            // Si te llaman con 1 solo parámetro por accidente, falla explícito:
+            throw new \InvalidArgumentException('delete requiere (idVenta, lineNumber)');
+        }
 
-    public function findById(int $id): ?object
-    {
-        throw new \BadMethodCallException('Usa findOne($idVenta, $lineNumber) para buscar una línea.');
+        $stmt = $this->db->prepare('CALL sp_detalle_venta_delete(:idVenta, :lineNumber)');
+        $ok = $stmt->execute([
+            ':idVenta'    => $idVenta,
+            ':lineNumber' => $lineNumber
+        ]);
+        while ($stmt->nextRowset()) {}
+        $stmt->closeCursor();
+        return (bool)$ok;
     }
 }

@@ -1,6 +1,23 @@
 -- =========================================
 -- LISTAR DETALLES DE UNA VENTA
 -- =========================================
+DROP PROCEDURE IF EXISTS sp_detalle_venta_list_all;
+DELIMITER //
+
+CREATE PROCEDURE sp_detalle_venta_list_all()
+BEGIN
+    SELECT
+        idVenta,
+        lineNumber,
+        idProducto,
+        cantidad,
+        precioUnitario
+    FROM DetalleVenta
+    ORDER BY idVenta, lineNumber;
+END //
+//
+DELIMITER ;
+
 DROP PROCEDURE IF EXISTS sp_detalle_venta_list;
 DELIMITER //
 
