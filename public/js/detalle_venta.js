@@ -158,6 +158,11 @@ const createDetalleVentaPanel = () => {
                         storeDetalleVenta.sync();
                     }
                 }
+            },
+            '->',
+            {
+                text: 'Refrescar',
+                handler: () => storeDetalleVenta.reload()
             }
         ]
     });
