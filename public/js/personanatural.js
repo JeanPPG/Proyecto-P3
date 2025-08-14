@@ -1,5 +1,5 @@
-const createPersonaJuridicaPanel = () => {
-    Ext.define('App.model.PersonaJuridica', {
+const createPersonaNaturalPanel = () => {
+    Ext.define('App.model.PersonaNatural', {
         extend: 'Ext.data.Model',
         fields: [
             { name: 'id', type: 'int' },
@@ -7,18 +7,18 @@ const createPersonaJuridicaPanel = () => {
             { name: 'telefono', type: 'string' },
             { name: 'direccion', type: 'string' },
             { name: 'tipo', type: 'string' },
-            { name: 'razonSocial', type: 'string' },
-            { name: 'ruc', type: 'string' },
-            { name: 'representanteLegal', type: 'string' }
+            { name: 'nombres', type: 'string' },
+            { name: 'apellidos', type: 'string' },
+            { name: 'cedula', type: 'string' }
         ]
     });
 
-    let personaJuridicaStore = Ext.create('Ext.data.Store', {
-        storeId: 'personaJuridicaStore',
-        model: 'App.model.PersonaJuridica',
+    let personaNaturalStore = Ext.create('Ext.data.Store', {
+        storeId: 'personaNaturalStore',
+        model: 'App.model.PersonaNatural',
         proxy: {
             type: 'ajax',
-            url: '/api/persona_juridica.php',
+            url: '/api/persona_natural.php',
             reader: {
                 type: 'json',
                 rootProperty: 'data'
@@ -31,13 +31,13 @@ const createPersonaJuridicaPanel = () => {
             appendId: false
         },
         autoLoad: true,
-        autoSync: false,
+        autoSync: false
     });
 
     const grid = Ext.create('Ext.grid.Panel', {
-        title: 'Personas Jurídicas',
-        store: personaJuridicaStore,
-        itemId: 'personaJuridicaPanel',
+        title: 'Personas Naturales',
+        store: personaNaturalStore,
+        itemId: 'personaNaturalPanel',
         layout: 'fit',
         columns: [
             { text: 'ID', dataIndex: 'id', flex: 1 },
@@ -45,9 +45,9 @@ const createPersonaJuridicaPanel = () => {
             { text: 'Teléfono', dataIndex: 'telefono', flex: 2 },
             { text: 'Dirección', dataIndex: 'direccion', flex: 3 },
             { text: 'Tipo', dataIndex: 'tipo', flex: 2 },
-            { text: 'Razón Social', dataIndex: 'razonSocial', flex: 2 },
-            { text: 'RUC', dataIndex: 'ruc', flex: 2 },
-            { text: 'Representante Legal', dataIndex: 'representanteLegal', flex: 2 }
+            { text: 'Nombres', dataIndex: 'nombres', flex: 2 },
+            { text: 'Apellidos', dataIndex: 'apellidos', flex: 2 },
+            { text: 'Cédula', dataIndex: 'cedula', flex: 2 }
         ],
     });
 

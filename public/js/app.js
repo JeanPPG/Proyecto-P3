@@ -1,10 +1,12 @@
 Ext.onReady(() => {
     const personaJuridicaPanel = createPersonaJuridicaPanel();
 
+    const personaNaturalPanel = createPersonaNaturalPanel();
+
     const mainCard = Ext.create('Ext.panel.Panel',{
         region: 'center',
         layout: 'card',
-        items: [personaJuridicaPanel],
+        items: [personaJuridicaPanel, personaNaturalPanel],
     });
 
     Ext.create('Ext.container.Viewport', {
@@ -21,7 +23,12 @@ Ext.onReady(() => {
                             mainCard.getLayout().setActiveItem(personaJuridicaPanel);
                         }
                     },
-                    
+                    {
+                        text: 'Persona Natural',
+                        handler: () => {
+                            mainCard.getLayout().setActiveItem(personaNaturalPanel);
+                        }
+                    }
                 ],
             },
             mainCard,
