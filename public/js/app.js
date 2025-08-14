@@ -1,26 +1,34 @@
 Ext.onReady(() => {
     const personaJuridicaPanel = createPersonaJuridicaPanel();
-
-    const personaNaturalPanel = createPersonaNaturalPanel();
-
-    const productoFisicoPanel = createProductoFisicoPanel();
-
+    const personaNaturalPanel  = createPersonaNaturalPanel();
+    const productoFisicoPanel  = createProductoFisicoPanel();
     const productoDigitalPanel = createProductoDigitalPanel();
+    const usuarioPanel         = createUsuarioPanel();
+    const facturaPanel        = createFacturaPanel();
+    const ventaPanel          = createVentaPanel();
 
-    const mainCard = Ext.create('Ext.panel.Panel',{
+    const mainCard = Ext.create('Ext.panel.Panel', {
         region: 'center',
         layout: 'card',
-        items: [personaJuridicaPanel, personaNaturalPanel, productoFisicoPanel, productoDigitalPanel],
+        items: [
+            personaJuridicaPanel,
+            personaNaturalPanel,
+            productoFisicoPanel,
+            productoDigitalPanel,
+            usuarioPanel,
+            facturaPanel,
+            ventaPanel
+        ],
     });
 
     Ext.create('Ext.container.Viewport', {
         id: 'mainViewport',
         layout: 'border',
-        items:[
+        items: [
             {
                 region: 'north',
                 xtype: 'toolbar',
-                items:[
+                items: [
                     {
                         text: 'Persona Jurídica',
                         handler: () => {
@@ -44,11 +52,28 @@ Ext.onReady(() => {
                         handler: () => {
                             mainCard.getLayout().setActiveItem(productoDigitalPanel);
                         }
+                    },
+                    {
+                        text: 'Usuarios',
+                        handler: () => {
+                            mainCard.getLayout().setActiveItem(usuarioPanel);
+                        }
+                    },
+                    {
+                        text: 'Facturas',
+                        handler: () => {
+                            mainCard.getLayout().setActiveItem(facturaPanel);
+                        }
+                    },
+                    {
+                        text: 'Ventas',
+                        handler: () => {
+                            mainCard.getLayout().setActiveItem(ventaPanel);
+                        }
                     }
                 ],
             },
             mainCard,
         ],
-
     });
 });

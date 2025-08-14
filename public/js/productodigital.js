@@ -1,4 +1,3 @@
-// productodigital.js (versión REST unificada)
 const createProductoDigitalPanel = () => {
     Ext.define('App.model.ProductoDigital', {
         extend: 'Ext.data.Model',
