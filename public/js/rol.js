@@ -1,19 +1,19 @@
-const createPermisoPanel = () => {
-    Ext.define('App.model.Permiso', {
+const createRolPanel = () => {
+    Ext.define('App.model.Rol', {
         extend: 'Ext.data.Model',
         fields: [
-            { name: 'idRol', type: 'int' },
-            { name: 'idPermiso', type: 'int' }
+            { name: 'id', type: 'int' },
+            { name: 'nombre', type: 'string' }
         ],
-        idProperty: ['idRol', 'idPermiso'] // Clave compuesta
+        idProperty: 'id'
     });
 
-    const permisoStore = Ext.create('Ext.data.Store', {
-        storeId: 'permisoStore',
-        model: 'App.model.Permiso',
+    const rolStore = Ext.create('Ext.data.Store', {
+        storeId: 'rolStore',
+        model: 'App.model.Rol',
         proxy: {
             type: 'rest',
-            url: '/api/rol_permiso.php', // Asumiendo que la API es para RolPermiso
+            url: '/api/rol.php',
             reader: {
                 type: 'json',
                 transform: function (data) {
@@ -48,7 +48,7 @@ const createPermisoPanel = () => {
 
     const openDialog = (rec, isNew) => {
         const win = Ext.create('Ext.window.Window', {
-            title: isNew ? 'Nuevo Permiso' : 'Editar Permiso',
+            title: isNew ? 'Nuevo Rol' : 'Editar Rol',
             modal: true,
             layout: 'fit',
             width: 520,
@@ -58,8 +58,8 @@ const createPermisoPanel = () => {
                     bodyPadding: 12,
                     defaults: { anchor: '100%', msgTarget: 'side' },
                     items: [
-                        { xtype: 'numberfield', name: 'idRol', fieldLabel: 'ID Rol', allowBlank: false },
-                        { xtype: 'numberfield', name: 'idPermiso', fieldLabel: 'ID Permiso', allowBlank: false }
+                        { xtype: 'hiddenfield', name: 'id' },
+                        { xtype: 'textfield', name: 'nombre', fieldLabel: 'Nombre', allowBlank: false }
                     ]
                 }
             ],
@@ -74,17 +74,17 @@ const createPermisoPanel = () => {
                         form.updateRecord(rec);
 
                         if (isNew) {
-                            permisoStore.add(rec);
+                            rolStore.add(rec);
                         }
 
-                        permisoStore.sync({
+                        rolStore.sync({
                             success: () => {
-                                Ext.Msg.alert('Éxito', 'Permiso guardado correctamente.');
-                                permisoStore.reload();
+                                Ext.Msg.alert('Éxito', 'Rol guardado correctamente.');
+                                rolStore.reload();
                                 win.close();
                             },
                             failure: (batch) => {
-                                let msg = 'No se pudo guardar el Permiso.';
+                                let msg = 'No se pudo guardar el Rol.';
                                 const op = batch.operations && batch.operations[0];
                                 if (op && op.error && op.error.response) {
                                     try {
@@ -106,20 +106,20 @@ const createPermisoPanel = () => {
     };
 
     const grid = Ext.create('Ext.grid.Panel', {
-        title: 'Permisos',
-        store: permisoStore,
-        itemId: 'permisoPanel',
+        title: 'Roles',
+        store: rolStore,
+        itemId: 'rolPanel',
         layout: 'fit',
         selModel: { selType: 'rowmodel', mode: 'SINGLE' },
         columns: [
-            { text: 'ID Rol', dataIndex: 'idRol', width: 100 },
-            { text: 'ID Permiso', dataIndex: 'idPermiso', flex: 1 }
+            { text: 'ID', dataIndex: 'id', width: 60 },
+            { text: 'Nombre', dataIndex: 'nombre', flex: 1 }
         ],
         tbar: [
             {
                 text: 'Agregar',
                 handler: () => {
-                    const rec = Ext.create('App.model.Permiso', {});
+                    const rec = Ext.create('App.model.Rol', {});
                     openDialog(rec, true);
                 }
             },
@@ -128,7 +128,7 @@ const createPermisoPanel = () => {
                 handler: () => {
                     const sel = grid.getSelectionModel().getSelection();
                     if (sel.length === 0) {
-                        Ext.Msg.alert('Atención', 'Seleccione un Permiso para editar.');
+                        Ext.Msg.alert('Atención', 'Seleccione un Rol para editar.');
                         return;
                     }
                     openDialog(sel[0], false);
@@ -139,16 +139,16 @@ const createPermisoPanel = () => {
                 handler: () => {
                     const sel = grid.getSelectionModel().getSelection();
                     if (sel.length === 0) {
-                        Ext.Msg.alert('Atención', 'Seleccione un Permiso para eliminar.');
+                        Ext.Msg.alert('Atención', 'Seleccione un Rol para eliminar.');
                         return;
                     }
                     Ext.Msg.confirm('Confirmar', '¿Seguro que desea eliminar?', (btn) => {
                         if (btn === 'yes') {
-                            permisoStore.remove(sel[0]);
-                            permisoStore.sync({
+                            rolStore.remove(sel[0]);
+                            rolStore.sync({
                                 success: () => {
                                     Ext.Msg.alert('Éxito', 'Eliminado correctamente.');
-                                    permisoStore.reload();
+                                    rolStore.reload();
                                 },
                                 failure: (batch) => {
                                     let msg = 'No se pudo eliminar.';
@@ -169,7 +169,7 @@ const createPermisoPanel = () => {
             '->',
             {
                 text: 'Refrescar',
-                handler: () => permisoStore.reload()
+                handler: () => rolStore.reload()
             }
         ]
     });
