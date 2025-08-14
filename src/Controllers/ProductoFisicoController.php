@@ -62,7 +62,6 @@ class ProductoFisicoController
                         return;
                     }
 
-                    // reconstruimos entidad con cambios (conservando valores si no vienen)
                     $entity = new ProductoFisico(
                         $id,
                         (string)($payload['nombre'] ?? $existing->getNombre()),

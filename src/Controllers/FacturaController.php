@@ -22,7 +22,6 @@ class FacturaController
         $action = $_GET['action'] ?? null;
 
         try {
-            // ===== Acciones especiales (PUT) =====
             if ($method === 'PUT' && $action === 'enviar') {
                 $payload = json_decode(file_get_contents('php://input'), true) ?? [];
                 $id = (int)($payload['id'] ?? 0);
@@ -31,10 +30,9 @@ class FacturaController
                     echo json_encode(['error' => 'id es requerido']);
                     return;
                 }
-                $numero = $payload['numero'] ?? null;         // opcional actualizar
-                $clave  = $payload['claveAcceso'] ?? null;    // opcional actualizar
+                $numero = $payload['numero'] ?? null;         
+                $clave  = $payload['claveAcceso'] ?? null;    
 
-                // Repo debe llamar a sp_factura_mark_enviada
                 $ok = $this->repo->markEnviada($id, $numero, $clave);
                 echo json_encode(['success' => (bool)$ok]);
                 return;
@@ -48,13 +46,11 @@ class FacturaController
                     echo json_encode(['error' => 'id es requerido']);
                     return;
                 }
-                // Repo debe llamar a sp_factura_anular
                 $ok = $this->repo->anular($id);
                 echo json_encode(['success' => (bool)$ok]);
                 return;
             }
 
-            // ===== CRUD estándar =====
             switch ($method) {
                 case 'GET': {
                     if (isset($_GET['id'])) {
@@ -84,8 +80,6 @@ class FacturaController
                         return;
                     }
 
-                    // Repo debe llamar a sp_factura_create
-                    // Si tu repo usa create(...), cámbialo aquí.
                     $result = $this->repo->createWithVenta($idVenta, $numero, $claveAcceso);
 
                     if (is_int($result)) {
@@ -103,7 +97,6 @@ class FacturaController
                 }
 
                 case 'DELETE': {
-                    // Por auditoría normalmente NO se borra una factura
                     http_response_code(405);
                     echo json_encode(['error' => 'Eliminar facturas no está permitido']);
                     return;

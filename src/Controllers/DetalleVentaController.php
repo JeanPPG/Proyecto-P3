@@ -24,7 +24,6 @@ class DetalleVentaController
         $action = $_GET['action'] ?? null;
 
         try {
-            // ===== Acciones especiales =====
             if ($action === 'recalcular') {
                 $idVenta = $method === 'GET'
                     ? (int)($_GET['idVenta'] ?? 0)
@@ -40,7 +39,7 @@ class DetalleVentaController
                 $stmt = $pdo->prepare('CALL sp_venta_recalcular_total(:idVenta)');
                 $stmt->execute([':idVenta' => $idVenta]);
                 $venta = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
-                while ($stmt->nextRowset()) { /* consume extra sets */ }
+                while ($stmt->nextRowset()) { }
                 $stmt->closeCursor();
 
                 echo json_encode([
@@ -50,20 +49,15 @@ class DetalleVentaController
                 return;
             }
 
-            // ===== CRUD =====
             switch ($method) {
                 case 'GET': {
-                    // Permite:
-                    // 1) Global:          /api/detalle_venta.php
-                    // 2) Por venta:       /api/detalle_venta.php?idVenta=1
-                    // 3) Línea específica:/api/detalle_venta.php?idVenta=1&lineNumber=2
+                
                     $idVenta = isset($_GET['idVenta']) ? (int)$_GET['idVenta'] : 0;
 
                     if ($idVenta <= 0) {
-                        // Listado global
                         $all = array_map(
                             fn(DetalleVenta $d) => $this->toArray($d),
-                            $this->repo->findAll()           // <-- importante: repo debe tener findAll()
+                            $this->repo->findAll()          
                         );
                         echo json_encode($all);
                         return;
@@ -97,7 +91,7 @@ class DetalleVentaController
                     $cantidad      = (int)($payload['cantidad'] ?? 0);
                     $precioUnitario = array_key_exists('precioUnitario', $payload)
                         ? (float)$payload['precioUnitario']
-                        : 0.0; // null/0 → que el SP tome precio de Producto si aplica
+                        : 0.0; 
 
                     if ($idVenta <= 0 || $idProducto <= 0 || $cantidad <= 0) {
                         http_response_code(400);
@@ -152,7 +146,6 @@ class DetalleVentaController
                         return;
                     }
 
-                    // Asegúrate que tu repo tenga delete(int $idVenta, int $lineNumber)
                     $ok = $this->repo->delete($idVenta, $lineNumber);
                     echo json_encode(['success' => (bool)$ok]);
                     return;

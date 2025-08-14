@@ -15,7 +15,6 @@ final class PersonaJuridicaController
         $this->repo = new PersonaJuridicaRepository();
     }
 
-    // src/Controllers/PersonaJuridicaController.php
     public function handle(): void
     {
         header('Content-Type: application/json; charset=utf-8');
