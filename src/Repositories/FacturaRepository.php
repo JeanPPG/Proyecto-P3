@@ -7,7 +7,6 @@ use App\Interfaces\RepositoryInterface;
 use App\Config\Database;
 use App\Entities\Factura;
 use PDO;
-use PDOException;
 
 class FacturaRepository implements RepositoryInterface
 {
@@ -20,56 +19,90 @@ class FacturaRepository implements RepositoryInterface
 
     private function hydrate(array $row): Factura
     {
-        $fecha = isset($row['fechaEmision']) && $row['fechaEmision'] !== null
-            ? new \DateTime((string)$row['fechaEmision'])
-            : new \DateTime();
+
+        $id          = (int)($row['id'] ?? $row['idFactura'] ?? $row['id_factura'] ?? 0);
+        $idVenta     = (int)($row['idVenta'] ?? $row['id_venta'] ?? 0);
+        $numero      = (string)($row['numero'] ?? '');
+        $claveAcceso = (string)($row['claveAcceso'] ?? $row['clave_acceso'] ?? '');
+        $fechaRaw    = (string)($row['fechaEmision'] ?? $row['fecha_emision'] ?? 'now');
+        $estado      = (string)($row['estado'] ?? 'PENDIENTE');
 
         return new Factura(
-            (int)$row['id'],
-            (int)$row['idVenta'],
-            (string)($row['numero'] ?? ''),
-            (string)($row['claveAcceso'] ?? ''),
-            $fecha,
-            (string)($row['estado'] ?? 'PENDIENTE')
+            $id,
+            $idVenta,
+            $numero,
+            $claveAcceso,
+            new \DateTime($fechaRaw),
+            $estado
         );
     }
 
     public function findAll(): array
     {
-        try {
-            $stmt = $this->db->query('CALL sp_factura_list()');
-            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-            $stmt->closeCursor();
+        $stmt = $this->db->query('CALL sp_factura_list()');
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        while ($stmt->nextRowset()) { }
+        $stmt->closeCursor();
 
-            $out = [];
-            foreach ($rows as $r) {
-                $out[] = $this->hydrate($r);
-            }
-            return $out;
-        } catch (PDOException $e) {
-            throw new \RuntimeException('Error al listar facturas: '.$e->getMessage(), 0, $e);
-        }
+        return array_map(fn($r) => $this->hydrate($r), $rows);
     }
 
     public function findById(int $id): ?object
     {
-        try {
-            $stmt = $this->db->prepare('CALL sp_find_factura(?)');
-            $stmt->execute([$id]);
-            $row = $stmt->fetch(PDO::FETCH_ASSOC);
-            $stmt->closeCursor();
+        $stmt = $this->db->prepare('CALL sp_find_factura(:p_id)');
+        $stmt->execute([':p_id' => $id]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+        while ($stmt->nextRowset()) {  }
+        $stmt->closeCursor();
 
-            return $row ? $this->hydrate($row) : null;
-        } catch (PDOException $e) {
-            if (stripos($e->getMessage(), 'sp_find_factura') !== false) {
-                $stmt = $this->db->prepare('CALL sp_factura_find_by_id(?)');
-                $stmt->execute([$id]);
-                $row = $stmt->fetch(PDO::FETCH_ASSOC);
-                $stmt->closeCursor();
-                return $row ? $this->hydrate($row) : null;
-            }
-            throw new \RuntimeException('Error al buscar factura: '.$e->getMessage(), 0, $e);
+        return $row ? $this->hydrate($row) : null;
+    }
+
+    public function createWithVenta(int $idVenta, string $numero, string $claveAcceso): int|bool
+    {
+        $stmt = $this->db->prepare('CALL sp_factura_create(:p_idVenta, :p_numero, :p_claveAcceso)');
+        $ok = $stmt->execute([
+            ':p_idVenta'     => $idVenta,
+            ':p_numero'      => $numero,
+            ':p_claveAcceso' => $claveAcceso,
+        ]);
+
+        $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+        while ($stmt->nextRowset()) {  }
+        $stmt->closeCursor();
+
+        if (!$ok) return false;
+        if ($row && isset($row['factura_id'])) {
+            return (int)$row['factura_id'];
         }
+        return true;
+    }
+
+
+    public function markEnviada(int $id, ?string $numero = null, ?string $claveAcceso = null): bool
+    {
+        $stmt = $this->db->prepare('CALL sp_factura_mark_enviada(:p_id, :p_numero, :p_claveAcceso)');
+        $ok = $stmt->execute([
+            ':p_id'          => $id,
+            ':p_numero'      => $numero,
+            ':p_claveAcceso' => $claveAcceso,
+        ]);
+        while ($stmt->fetch(PDO::FETCH_ASSOC)) {  }
+        while ($stmt->nextRowset()) {  }
+        $stmt->closeCursor();
+
+        return (bool)$ok;
+    }
+
+    public function anular(int $id): bool
+    {
+        $stmt = $this->db->prepare('CALL sp_factura_anular(:p_id)');
+        $ok = $stmt->execute(params: [':p_id' => $id]);
+        while ($stmt->fetch(PDO::FETCH_ASSOC)) {  }
+        while ($stmt->nextRowset()) {  }
+        $stmt->closeCursor();
+
+        return (bool)$ok;
     }
 
     public function create(object $entity): bool
@@ -77,20 +110,8 @@ class FacturaRepository implements RepositoryInterface
         if (!$entity instanceof Factura) {
             throw new \InvalidArgumentException('Expected instance of Factura');
         }
-
-        try {
-            $stmt = $this->db->prepare('CALL sp_factura_create(?, ?, ?)');
-            $ok = $stmt->execute([
-                $entity->getIdVenta(),
-                $entity->getNumero(),
-                $entity->getClaveAcceso()
-            ]);
-            // $row = $stmt->fetch(PDO::FETCH_ASSOC); $newId = $row['factura_id'] ?? null;
-            $stmt->closeCursor();
-            return (bool)$ok;
-        } catch (PDOException $e) {
-            throw new \RuntimeException('Error al crear factura: '.$e->getMessage(), 0, $e);
-        }
+        $res = $this->createWithVenta($entity->getIdVenta(), $entity->getNumero(), $entity->getClaveAcceso());
+        return $res === true || (is_int($res) && $res > 0);
     }
 
     public function update(object $entity): bool
@@ -99,86 +120,11 @@ class FacturaRepository implements RepositoryInterface
             throw new \InvalidArgumentException('Expected instance of Factura');
         }
 
-        try {
-            $estado = strtoupper($entity->getEstado());
-
-            if ($estado === 'ENVIADA') {
-                $stmt = $this->db->prepare('CALL sp_factura_mark_enviada(?, ?, ?)');
-                $ok = $stmt->execute([
-                    $entity->getId(),
-                    $entity->getNumero() ?: null,
-                    $entity->getClaveAcceso() ?: null
-                ]);
-                $stmt->fetchAll(PDO::FETCH_ASSOC); 
-                $stmt->closeCursor();
-                return (bool)$ok;
-            }
-
-            if ($estado === 'ANULADA') {
-                $stmt = $this->db->prepare('CALL sp_factura_anular(?)');
-                $ok = $stmt->execute([$entity->getId()]);
-                $stmt->fetchAll(PDO::FETCH_ASSOC);
-                $stmt->closeCursor();
-                return (bool)$ok;
-            }
-
-            return false;
-        } catch (PDOException $e) {
-            throw new \RuntimeException('Error al actualizar factura: '.$e->getMessage(), 0, $e);
-        }
+        return true;
     }
 
     public function delete(int $id): bool
     {
-        try {
-            $stmt = $this->db->prepare('CALL sp_factura_anular(?)');
-            $ok = $stmt->execute([$id]);
-            $stmt->fetchAll(PDO::FETCH_ASSOC);
-            $stmt->closeCursor();
-            return (bool)$ok;
-        } catch (PDOException $e) {
-            throw new \RuntimeException('Error al anular factura: '.$e->getMessage(), 0, $e);
-        }
-    }
-
- 
-    public function markEnviada(int $id, ?string $numero = null, ?string $claveAcceso = null): bool
-    {
-        try {
-            $stmt = $this->db->prepare('CALL sp_factura_mark_enviada(?, ?, ?)');
-            $ok = $stmt->execute([$id, $numero, $claveAcceso]);
-            $stmt->fetchAll(PDO::FETCH_ASSOC); 
-            $stmt->closeCursor();
-            return (bool)$ok;
-        } catch (PDOException $e) {
-            throw new \RuntimeException('Error al marcar enviada: '.$e->getMessage(), 0, $e);
-        }
-    }
-
-    public function anular(int $id): bool
-    {
-        try {
-            $stmt = $this->db->prepare('CALL sp_factura_anular(?)');
-            $ok = $stmt->execute([$id]);
-            $stmt->fetchAll(PDO::FETCH_ASSOC); 
-            $stmt->closeCursor();
-            return (bool)$ok;
-        } catch (PDOException $e) {
-            throw new \RuntimeException('Error al anular factura: '.$e->getMessage(), 0, $e);
-        }
-    }
-
-    public function findByVenta(int $idVenta): ?Factura
-    {
-        try {
-            $stmt = $this->db->prepare('CALL sp_factura_by_venta(?)');
-            $stmt->execute([$idVenta]);
-            $row = $stmt->fetch(PDO::FETCH_ASSOC);
-            $stmt->closeCursor();
-
-            return $row ? $this->hydrate($row) : null;
-        } catch (PDOException $e) {
-            throw new \RuntimeException('Error al buscar factura por venta: '.$e->getMessage(), 0, $e);
-        }
+        return false;
     }
 }
