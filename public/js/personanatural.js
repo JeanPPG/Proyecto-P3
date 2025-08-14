@@ -78,7 +78,7 @@ const createPersonaNaturalPanel = () => {
                         minLength: 10,
                         maxLength: 10,
                         regex: /^[0-9]{10}$/,
-                        regexText: 'La cédula debe tener 10 dígitos.'
+                        regexText: 'La cédula debe tener 10 dígitos y ser valida.'
                     }
                 ]
             }],
