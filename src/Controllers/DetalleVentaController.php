@@ -24,9 +24,8 @@ class DetalleVentaController
         $action = $_GET['action'] ?? null;
 
         try {
-            // ===== Acciones especiales por query =====
+            // ===== Acciones especiales =====
             if ($action === 'recalcular') {
-                // Soporta GET ?idVenta=... o POST {idVenta:...}
                 $idVenta = $method === 'GET'
                     ? (int)($_GET['idVenta'] ?? 0)
                     : (int)((json_decode(file_get_contents('php://input'), true) ?? [])['idVenta'] ?? 0);
@@ -37,12 +36,11 @@ class DetalleVentaController
                     return;
                 }
 
-                // Llamada directa al SP sp_venta_recalcular_total
                 $pdo = Database::getConnection();
                 $stmt = $pdo->prepare('CALL sp_venta_recalcular_total(:idVenta)');
                 $stmt->execute([':idVenta' => $idVenta]);
-                // Este SP devuelve el header actualizado como resultset
-                $venta = $stmt->fetch(PDO::FETCH_ASSOC);
+                $venta = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+                while ($stmt->nextRowset()) { /* consume extra sets */ }
                 $stmt->closeCursor();
 
                 echo json_encode([
@@ -52,16 +50,22 @@ class DetalleVentaController
                 return;
             }
 
-            // ===== CRUD estándar =====
+            // ===== CRUD =====
             switch ($method) {
-                // GET:
-                //   /api/detalle_venta.php?idVenta=1                  -> lista de líneas
-                //   /api/detalle_venta.php?idVenta=1&lineNumber=2     -> una línea
                 case 'GET': {
+                    // Permite:
+                    // 1) Global:          /api/detalle_venta.php
+                    // 2) Por venta:       /api/detalle_venta.php?idVenta=1
+                    // 3) Línea específica:/api/detalle_venta.php?idVenta=1&lineNumber=2
                     $idVenta = isset($_GET['idVenta']) ? (int)$_GET['idVenta'] : 0;
+
                     if ($idVenta <= 0) {
-                        http_response_code(400);
-                        echo json_encode(['error' => 'idVenta es requerido']);
+                        // Listado global
+                        $all = array_map(
+                            fn(DetalleVenta $d) => $this->toArray($d),
+                            $this->repo->findAll()           // <-- importante: repo debe tener findAll()
+                        );
+                        echo json_encode($all);
                         return;
                     }
 
@@ -77,23 +81,23 @@ class DetalleVentaController
                         return;
                     }
 
-                    $list = array_map(fn(DetalleVenta $d) => $this->toArray($d), $this->repo->listByVenta($idVenta));
+                    $list = array_map(
+                        fn(DetalleVenta $d) => $this->toArray($d),
+                        $this->repo->listByVenta($idVenta)
+                    );
                     echo json_encode($list);
                     return;
                 }
 
-                // POST: crear línea
-                // Body JSON: { idVenta, idProducto, cantidad, precioUnitario? }
                 case 'POST': {
                     $payload = json_decode(file_get_contents('php://input'), true) ?? [];
 
                     $idVenta       = (int)($payload['idVenta'] ?? 0);
                     $idProducto    = (int)($payload['idProducto'] ?? 0);
                     $cantidad      = (int)($payload['cantidad'] ?? 0);
-                    // precioUnitario puede ser null (0.0 aquí y el SP toma el de Producto si implementado)
                     $precioUnitario = array_key_exists('precioUnitario', $payload)
                         ? (float)$payload['precioUnitario']
-                        : 0.0;
+                        : 0.0; // null/0 → que el SP tome precio de Producto si aplica
 
                     if ($idVenta <= 0 || $idProducto <= 0 || $cantidad <= 0) {
                         http_response_code(400);
@@ -101,19 +105,14 @@ class DetalleVentaController
                         return;
                     }
 
-                    // lineNumber = 0 (lo asigna el SP como MAX+1)
                     $entity = new DetalleVenta($idVenta, 0, $idProducto, $cantidad, $precioUnitario);
-
                     $ok = $this->repo->add($entity);
                     echo json_encode(['success' => (bool)$ok]);
                     return;
                 }
 
-                // PUT: actualizar línea
-                // Body JSON: { idVenta, lineNumber, idProducto, cantidad, precioUnitario? }
                 case 'PUT': {
                     $payload = json_decode(file_get_contents('php://input'), true) ?? [];
-
                     $idVenta    = (int)($payload['idVenta'] ?? 0);
                     $lineNumber = (int)($payload['lineNumber'] ?? 0);
 
@@ -137,14 +136,11 @@ class DetalleVentaController
                         : $existing->getPrecioUnitario();
 
                     $entity = new DetalleVenta($idVenta, $lineNumber, $idProducto, $cantidad, $precioUnitario);
-
                     $ok = $this->repo->update($entity);
                     echo json_encode(['success' => (bool)$ok]);
                     return;
                 }
 
-                // DELETE:
-                // Body JSON: { idVenta, lineNumber }
                 case 'DELETE': {
                     $payload = json_decode(file_get_contents('php://input'), true) ?? [];
                     $idVenta    = (int)($payload['idVenta'] ?? 0);
@@ -156,6 +152,7 @@ class DetalleVentaController
                         return;
                     }
 
+                    // Asegúrate que tu repo tenga delete(int $idVenta, int $lineNumber)
                     $ok = $this->repo->delete($idVenta, $lineNumber);
                     echo json_encode(['success' => (bool)$ok]);
                     return;
