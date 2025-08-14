@@ -1,13 +1,13 @@
 const createPersonaJuridicaPanel = () => {
     Ext.define('App.model.PersonaJuridica', {
         extend: 'Ext.data.Model',
-        idProperty: 'id', 
+        idProperty: 'id',
         fields: [
             { name: 'id', type: 'int' },
             { name: 'email', type: 'string' },
             { name: 'telefono', type: 'string' },
             { name: 'direccion', type: 'string' },
-            { name: 'tipo', type: 'string' },
+            { name: 'tipo', type: 'string', defaultValue: 'JURIDICA' }, // valor fijo
             { name: 'razonSocial', type: 'string' },
             { name: 'ruc', type: 'string' },
             { name: 'representanteLegal', type: 'string' }
@@ -20,7 +20,7 @@ const createPersonaJuridicaPanel = () => {
         proxy: {
             type: 'rest',
             url: '/api/persona_juridica.php',
-            appendId: true, 
+            appendId: true,
             reader: {
                 type: 'json',
                 rootProperty: ''
@@ -49,7 +49,13 @@ const createPersonaJuridicaPanel = () => {
                         { xtype: 'textfield', name: 'email', fieldLabel: 'Email', allowBlank: false },
                         { xtype: 'textfield', name: 'telefono', fieldLabel: 'Teléfono', allowBlank: false },
                         { xtype: 'textfield', name: 'direccion', fieldLabel: 'Dirección', allowBlank: false },
-                        { xtype: 'textfield', name: 'tipo', fieldLabel: 'Tipo', allowBlank: false },
+                        {
+                            xtype: 'textfield',
+                            name: 'tipo',
+                            fieldLabel: 'Tipo',
+                            value: 'JURIDICA',
+                            readOnly: true
+                        },
                         { xtype: 'textfield', name: 'razonSocial', fieldLabel: 'Razón Social', allowBlank: false },
                         { xtype: 'textfield', name: 'ruc', fieldLabel: 'RUC', allowBlank: false },
                         { xtype: 'textfield', name: 'representanteLegal', fieldLabel: 'Representante Legal', allowBlank: false }
@@ -64,13 +70,16 @@ const createPersonaJuridicaPanel = () => {
                         const form = win.down('form').getForm();
                         if (!form.isValid()) return;
 
+                       
+                        rec.set('tipo', 'JURIDICA');
+
                         form.updateRecord(rec);
                         if (isNew) personaJuridicaStore.add(rec);
 
                         personaJuridicaStore.sync({
                             success: () => {
                                 Ext.Msg.alert('Éxito', 'Persona Jurídica guardada correctamente.');
-                                win.close(); 
+                                win.close();
                             },
                             failure: () => {
                                 Ext.Msg.alert('Error', 'No se pudo guardar la Persona Jurídica.');
@@ -108,12 +117,12 @@ const createPersonaJuridicaPanel = () => {
         ],
         tbar: [
             {
-                text: 'Nuevo',
+                text: 'Agregar Persona Jurídica',
                 iconCls: 'x-fa fa-plus',
                 handler: () => openDialog(Ext.create('App.model.PersonaJuridica'), true)
             },
             {
-                text: 'Editar',
+                text: 'Editar Persona Jurídica',
                 iconCls: 'x-fa fa-edit',
                 handler: () => {
                     const selection = grid.getSelectionModel().getSelection();
@@ -125,7 +134,7 @@ const createPersonaJuridicaPanel = () => {
                 }
             },
             {
-                text: 'Eliminar',
+                text: 'Eliminar Persona Jurídica',
                 iconCls: 'x-fa fa-trash',
                 handler: () => {
                     const selection = grid.getSelectionModel().getSelection();
